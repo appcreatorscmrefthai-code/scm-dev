@@ -148,7 +148,7 @@
     white-space: nowrap; font-size: 12.5px; }
   table.grid td.nw { white-space: nowrap; }
   table.grid td.num { text-align: right; white-space: nowrap; }
-  table.grid td.wrap { min-width: 180px; max-width: 320px; }
+  table.grid td.wrap { min-width: 240px; max-width: 340px; }
   table.grid tr:hover td { background: #fafcff; }
   table.grid tr.sel td { background: #eef4fd; }
   table.grid a { color: var(--blue); }
@@ -189,9 +189,43 @@
   .role-legend { font-size: 13px; color: var(--muted); line-height: 1.7; }
   .role-legend b { color: var(--ink); }
 
-  @media (max-width: 560px) {
+  .dash-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  .dash-top .stats { margin-bottom: 0; }
+  .dash-top #dashExport { white-space: nowrap; }
+
+  /* มือถือ: แต่ละแถวเป็นการ์ด */
+  .row-cards { display: flex; flex-direction: column; gap: 8px; }
+  .row-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+  .row-card.sel { background: #eef4fd; border-color: #c9daf3; }
+  .row-card .top { display: flex; align-items: center; gap: 8px; }
+  .row-card .top .grow { flex: 1; min-width: 0; font-size: 12.5px; color: var(--muted); }
+  .row-card .top .grow b { color: var(--ink); font-weight: 600; }
+  .row-card .rm { font-weight: 700; margin-top: 6px; display: flex; justify-content: space-between; gap: 8px; }
+  .row-card .rm .q { white-space: nowrap; color: var(--blue); }
+  .row-card .sub { color: var(--muted); font-size: 12.5px; margin-top: 3px; line-height: 1.5; }
+  .row-card .sub b { color: var(--ink); font-weight: 600; }
+  .row-card .act { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 8px; }
+  .row-card input[type=checkbox] { width: 20px; height: 20px; }
+
+  @media (max-width: 760px) {
+    .topbar { padding: 8px 12px; gap: 6px; }
     .topbar h1 { font-size: 16px; }
-    .stat { min-width: 0; flex: 1 1 40%; }
+    .user-chip { font-size: 11px; }
+    .tabs { padding: 0 12px 8px; gap: 4px; }
+    .tab { font-size: 13px; padding: 8px 2px; }
+    main { padding: 10px 12px 60px; }
+    .dash-top { flex-direction: column; align-items: stretch; }
+    .dash-top #dashExport { align-self: flex-end; padding: 7px 14px; font-size: 14px; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .stat { min-width: 0; padding: 6px 8px; }
+    .stat .k { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .stat .v { font-size: 18px; }
+    .toolbar input { flex: 1 1 100%; }
+    .toolbar select { flex: 1 1 40%; min-width: 0; }
+    .toolbar .seg { flex: 1 1 auto; }
+    .toolbar .seg button { flex: 1; }
+    .card { padding: 14px; }
+    .modal { padding-top: 6vh; }
   }
 
   /* Loading overlay */
@@ -254,7 +288,7 @@
   </div>
   <div class="tabs">
     <button type="button" class="tab" data-view="report" data-need="report">แจ้งงาน</button>
-    <button type="button" class="tab" data-view="dashboard">Dashboard</button>
+    <button type="button" class="tab" data-view="dashboard">ติดตามงาน</button>
     <button type="button" class="tab" data-view="import" data-need="report">นำเข้า Excel</button>
     <button type="button" class="tab" data-view="users" data-need="admin">ผู้ใช้</button>
   </div>
@@ -380,14 +414,17 @@
 
   <!-- ====================== Dashboard ====================== -->
   <section id="view-dashboard" class="view">
-    <div class="stats" id="dashStats"></div>
+    <div class="dash-top">
+      <div class="stats" id="dashStats"></div>
+      <button type="button" id="dashExport" class="btn btn-success">Export Excel</button>
+    </div>
     <div class="toolbar">
       <input id="dashSearch" type="search" placeholder="ค้นหา รหัสงาน FG / เลข PD / ชื่องาน / รหัสวัตถุดิบ / ชื่อ / หมายเหตุ">
       <select id="dashReporter"><option value="">ผู้แจ้งทั้งหมด</option></select>
       <select id="dashStatus"><option value="">สถานะทั้งหมด</option></select>
       <div class="seg" id="dashMode">
         <button type="button" data-mode="table" class="on">ตาราง</button>
-        <button type="button" data-mode="task">ตามงาน</button>
+        <button type="button" data-mode="task">ตาม PD</button>
       </div>
       <button type="button" id="dashRefresh" class="btn btn-ghost btn-small">โหลดใหม่</button>
     </div>
@@ -1092,7 +1129,7 @@
         rmCode: r.rm_code || "", rmName: r.rm_name || "", qty: r.qty ?? "",
         editType: r.edit_type || "", oldCode: r.old_code || "",
         fgCode: r.fg_code || "", pdNumber: r.pd_number || "", fgModel: r.fg_model || "",
-        useDate: fmtDate(r.use_date), photo: r.photo_url || "", note: r.note || "",
+        useDate: fmtDate(r.use_date), useDateRaw: r.use_date || "", photo: r.photo_url || "", note: r.note || "",
         status: r.status || "", engineer: r.engineer || "", fixDate: r.fix_date || "",
       }));
       const reporters = [...new Set(dashItems.map((it) => it.reporter).filter(Boolean))].sort();
@@ -1143,16 +1180,49 @@
     const shown = list.slice(0, dashLimit);
     const editable = can.edit();
     const allOn = editable && shown.length > 0 && shown.every((it) => selected.has(it.id));
+    const moreHtml = list.length > shown.length
+      ? `<div class="more"><button type="button" class="btn btn-ghost" id="dashMore">แสดงเพิ่ม (${shown.length} จาก ${list.length})</button></div>`
+      : `<div class="imp-count">แสดง ${list.length} รายการ</div>`;
+
+    if (isMobile()) {
+      // มือถือ: แสดงเป็นการ์ดทีละรายการ
+      $("dashList").innerHTML = (editable ? `<label class="imp-count" style="display:flex;align-items:center;gap:8px;margin:0 0 8px;">
+          <input type="checkbox" id="selAll" ${allOn ? "checked" : ""}> เลือกทั้งหมดที่แสดง</label>` : "")
+        + `<div class="row-cards">${shown.map((it) => `
+        <div class="row-card${selected.has(it.id) ? " sel" : ""}">
+          <div class="top">
+            ${editable ? `<input type="checkbox" class="selRow" data-id="${it.id}" ${selected.has(it.id) ? "checked" : ""}>` : ""}
+            <div class="grow">${it.fixDate ? `แก้ไข <b>${esc(it.fixDate)}</b>` : "ยังไม่แก้ไข"}${it.engineer ? ` · <b>${esc(it.engineer)}</b>` : ""}</div>
+            ${statusBadge(it.status)}
+          </div>
+          <div class="rm"><span>${esc(it.rmName || it.rmCode)}</span><span class="q">× ${esc(it.qty)}</span></div>
+          <div class="sub">${esc(it.rmCode)}${it.oldCode ? " · รหัสเดิม " + esc(it.oldCode) : ""} ${editBadge(it.editType)}</div>
+          <div class="sub"><b>${esc(it.pdNumber || "-")}</b> · ${esc(it.fgCode)}${it.fgModel ? " · " + esc(it.fgModel) : ""}</div>
+          <div class="sub">แจ้ง ${esc(fmtDateTime(it.date))} · ${esc(it.reporter)} · No. ${esc(it.no)}${it.useDate ? " · ใช้ " + esc(it.useDate) : ""}</div>
+          ${it.note ? `<div class="sub">${esc(it.note)}</div>` : ""}
+          ${(it.photo || editable) ? `<div class="act">
+            <span>${it.photo ? `<a href="${esc(it.photo)}" target="_blank" rel="noopener">ดูรูป</a>` : ""}</span>
+            ${editable ? `<button type="button" class="btn btn-ghost btn-small editRow" data-id="${it.id}">แก้ไข</button>` : ""}
+          </div>` : ""}
+        </div>`).join("")}</div>${moreHtml}`;
+      bindDashRows(shown, editable, ".row-card");
+      return;
+    }
+
     const head = [
       editable ? `<th><input type="checkbox" id="selAll" ${allOn ? "checked" : ""} title="เลือกทั้งหมดที่แสดง"></th>` : "",
+      "<th>วันที่แก้ไข</th><th>สถานะของงาน</th><th>เอ็นจิเนียร์ผู้รับผิดชอบ</th>",
       "<th>วันที่แจ้ง</th><th>No.</th><th>ผู้แจ้ง</th><th>รหัสที่เอาไปใช้</th><th>ชื่อวัตถุดิบ</th><th>จำนวนที่ใช้</th>",
       "<th>ชนิดการแก้ไข</th><th>รหัสเดิม</th><th>รหัสงาน FG</th><th>เลข PD</th><th>ชื่องาน FG</th><th>วันที่นำไปใช้</th>",
-      "<th>รูปถ่าย</th><th>หมายเหตุ</th><th>สถานะของงาน</th><th>เอ็นจิเนียร์ผู้รับผิดชอบ</th><th>วันที่แก้ไข</th>",
+      "<th>รูปถ่าย</th><th>หมายเหตุ</th>",
       editable ? "<th></th>" : "",
     ].join("");
     const body = shown.map((it) => `
       <tr class="${selected.has(it.id) ? "sel" : ""}">
         ${editable ? `<td><input type="checkbox" class="selRow" data-id="${it.id}" ${selected.has(it.id) ? "checked" : ""}></td>` : ""}
+        <td class="nw">${esc(it.fixDate)}</td>
+        <td>${statusBadge(it.status)}</td>
+        <td class="nw">${esc(it.engineer)}</td>
         <td class="nw">${esc(fmtDateTime(it.date))}</td>
         <td class="num">${esc(it.no)}</td>
         <td class="nw">${esc(it.reporter)}</td>
@@ -1167,31 +1237,86 @@
         <td class="nw">${esc(it.useDate)}</td>
         <td>${it.photo ? `<a href="${esc(it.photo)}" target="_blank" rel="noopener">ดูรูป</a>` : ""}</td>
         <td class="wrap">${esc(it.note)}</td>
-        <td>${statusBadge(it.status)}</td>
-        <td class="nw">${esc(it.engineer)}</td>
-        <td class="nw">${esc(it.fixDate)}</td>
         ${editable ? `<td><button type="button" class="btn btn-ghost btn-small editRow" data-id="${it.id}">แก้ไข</button></td>` : ""}
       </tr>`).join("");
     $("dashList").innerHTML = `
-      <div class="tbl-wrap"><table class="grid"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
-      ${list.length > shown.length ? `<div class="more"><button type="button" class="btn btn-ghost" id="dashMore">แสดงเพิ่ม (${shown.length} จาก ${list.length})</button></div>`
-        : `<div class="imp-count">แสดง ${list.length} รายการ</div>`}`;
-
-    if ($("dashMore")) $("dashMore").addEventListener("click", () => { dashLimit += 200; renderDashboard(); });
-    if (editable) {
-      $("selAll").addEventListener("change", (e) => {
-        shown.forEach((it) => (e.target.checked ? selected.add(it.id) : selected.delete(it.id)));
-        renderDashboard();
-      });
-      $("dashList").querySelectorAll(".selRow").forEach((cb) => cb.addEventListener("change", () => {
-        const id = Number(cb.dataset.id);
-        cb.checked ? selected.add(id) : selected.delete(id);
-        cb.closest("tr").classList.toggle("sel", cb.checked);
-        renderBulkBar();
-      }));
-      $("dashList").querySelectorAll(".editRow").forEach((b) => b.addEventListener("click", () => openEdit([Number(b.dataset.id)])));
-    }
+      <div class="tbl-wrap"><table class="grid"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>${moreHtml}`;
+    bindDashRows(shown, editable, "tr");
   }
+
+  function bindDashRows(shown, editable, rowSel) {
+    if ($("dashMore")) $("dashMore").addEventListener("click", () => { dashLimit += 200; renderDashboard(); });
+    if (!editable) return;
+    $("selAll").addEventListener("change", (e) => {
+      shown.forEach((it) => (e.target.checked ? selected.add(it.id) : selected.delete(it.id)));
+      renderDashboard();
+    });
+    $("dashList").querySelectorAll(".selRow").forEach((cb) => cb.addEventListener("change", () => {
+      const id = Number(cb.dataset.id);
+      cb.checked ? selected.add(id) : selected.delete(id);
+      cb.closest(rowSel).classList.toggle("sel", cb.checked);
+      renderBulkBar();
+    }));
+    $("dashList").querySelectorAll(".editRow").forEach((b) => b.addEventListener("click", () => openEdit([Number(b.dataset.id)])));
+  }
+
+  // จอแคบ (มือถือ) แสดงเป็นการ์ด, จอกว้างแสดงเป็นตาราง
+  const mobileMq = window.matchMedia("(max-width: 760px)");
+  const isMobile = () => mobileMq.matches;
+  const onMqChange = () => { if (dashLoaded) renderDashboard(); };
+  if (mobileMq.addEventListener) mobileMq.addEventListener("change", onMqChange); else mobileMq.addListener(onMqChange);
+
+  // ---------- Export Excel (ตามตัวกรองที่เลือกอยู่) ----------
+  // วันที่ -> เลขวันที่ของ Excel (เวลาไทยตามเครื่อง)
+  function excelSerial(y, mo, d, h = 0, mi = 0) {
+    return (Date.UTC(y, mo - 1, d, h, mi) - Date.UTC(1899, 11, 30)) / 86400000;
+  }
+  function serialFromIso(iso) {
+    const dt = new Date(iso);
+    if (!iso || isNaN(dt)) return null;
+    return excelSerial(dt.getFullYear(), dt.getMonth() + 1, dt.getDate(), dt.getHours(), dt.getMinutes());
+  }
+  function serialFromYmd(ymd) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd || "");
+    return m ? excelSerial(+m[1], +m[2], +m[3]) : null;
+  }
+  function serialFromFixDate(s) { // "DD/MM/YYYY HH:MI" (ค.ศ.)
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/.exec(String(s || "").trim());
+    return m ? excelSerial(+m[3], +m[2], +m[1], +(m[4] || 0), +(m[5] || 0)) : null;
+  }
+
+  $("dashExport").addEventListener("click", () => {
+    if (!dashLoaded) return;
+    if (typeof XLSX === "undefined") { alert("โหลดตัวสร้างไฟล์ Excel ไม่สำเร็จ ลองโหลดหน้าใหม่"); return; }
+    const list = filteredItems(false);
+    if (!list.length) { alert("ไม่มีข้อมูลตามตัวกรองที่เลือก"); return; }
+    const heads = ["วันที่แก้ไข", "สถานะของงาน", "เอ็นจิเนียร์ผู้รับผิดชอบ", "วันที่แจ้ง", "No.", "ผู้แจ้ง",
+      "รหัสที่เอาไปใช้", "ชื่อวัตถุดิบ", "จำนวนที่ใช้", "ชนิดการแก้ไข", "รหัสเดิม (ถ้าทราบ)", "รหัสงาน FG",
+      "เลข PD", "ชื่องาน FG", "วันที่นำไปใช้", "รูปถ่าย", "หมายเหตุ"];
+    const DT = "d/m/yyyy h:mm", D = "d/m/yyyy";
+    const aoa = [heads];
+    list.forEach((it) => {
+      const fx = serialFromFixDate(it.fixDate);
+      aoa.push([
+        fx !== null ? fx : it.fixDate, it.status, it.engineer, serialFromIso(it.date), Number(it.no) || it.no,
+        it.reporter, it.rmCode, it.rmName, Number(it.qty) || it.qty, it.editType, it.oldCode, it.fgCode,
+        it.pdNumber, it.fgModel, serialFromYmd(it.useDateRaw), it.photo, it.note,
+      ]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    for (let r = 1; r < aoa.length; r++) {
+      const fmt = (c, z) => { const cell = ws[XLSX.utils.encode_cell({ r, c })]; if (cell && cell.t === "n") cell.z = z; };
+      fmt(0, DT); fmt(3, DT); fmt(14, D);
+      const p = ws[XLSX.utils.encode_cell({ r, c: 15 })];
+      if (p && p.v) { p.l = { Target: String(p.v) }; p.v = "ดูรูป"; }
+    }
+    ws["!cols"] = [16, 20, 20, 16, 6, 12, 16, 40, 10, 16, 16, 24, 13, 20, 13, 8, 30].map((w) => ({ wch: w }));
+    ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: heads.length - 1 } }) };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "แจ้งแก้ไข BOM by Line");
+    const d = new Date();
+    XLSX.writeFile(wb, `แจ้งแก้ไข BOM_${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}_${pad2(d.getHours())}${pad2(d.getMinutes())}.xlsx`);
+  });
 
   function renderBulkBar() {
     const n = selected.size;
@@ -1219,7 +1344,7 @@
     const items = dashItems.filter((it) => editIds.includes(it.id));
     const single = items.length === 1 ? items[0] : null;
     $("editTitle").textContent = single
-      ? `แก้ไข: ${single.rmName || single.rmCode} (${single.fgCode || single.pdNumber || single.fgModel})`
+      ? `แก้ไข: ${single.rmName || single.rmCode} (${single.pdNumber || single.fgCode || single.fgModel})`
       : `แก้ไข ${items.length} รายการที่เลือก`;
     const keepOpt = single ? [] : [["", "— ไม่เปลี่ยน —"]];
     fillOptions($("editStatus"), [...keepOpt, ...STATUSES], null);
@@ -1251,12 +1376,12 @@
     btn.disabled = false; btn.textContent = "บันทึก";
   });
 
-  // ---------- Dashboard: มุมมองตามงาน ----------
+  // ---------- ติดตามงาน: มุมมองตาม PD ----------
   function renderTasks() {
     const filtered = filteredItems(true).slice().reverse(); // เก่า -> ใหม่ ให้สถานะล่าสุดทับ
     const tasks = new Map();
     filtered.forEach((it) => {
-      const key = it.fgCode || it.pdNumber || it.fgModel || "(ไม่ระบุงาน)";
+      const key = it.pdNumber ? "PD:" + it.pdNumber : (it.fgCode || it.fgModel || "(ไม่ระบุงาน)");
       if (!tasks.has(key)) tasks.set(key, { fgCode: it.fgCode, fgModel: it.fgModel, pdNumber: it.pdNumber, status: "", engineer: "", fixDate: "", items: [], last: it.date });
       const t = tasks.get(key);
       t.items.push(it);
@@ -1279,8 +1404,8 @@
       <div class="task-card">
         <div class="task-head" data-idx="${i}">
           <div>
-            <div class="code">${esc(t.fgCode || t.fgModel || t.pdNumber || "(ไม่ระบุงาน)")}</div>
-            <div class="model">${esc(t.fgModel)}${t.pdNumber ? " · PD " + esc(t.pdNumber) : ""}</div>
+            <div class="code">${esc(t.pdNumber || t.fgCode || t.fgModel || "(ไม่ระบุงาน)")}</div>
+            <div class="model">${[t.pdNumber ? t.fgCode : "", t.fgModel].filter(Boolean).map(esc).join(" · ")}</div>
             <div class="task-meta">อัปเดตล่าสุด ${esc(fmtDateTime(t.last))}</div>
             ${(t.engineer || t.fixDate) ? `<div class="task-meta">${t.engineer ? "เอ็นจิเนียร์: " + esc(t.engineer) : ""}${t.engineer && t.fixDate ? " · " : ""}${t.fixDate ? "วันที่แก้ไข: " + esc(t.fixDate) : ""}</div>` : ""}
             <div style="margin-top:6px;">${statusBadge(t.status)}</div>
@@ -1288,7 +1413,7 @@
           <div class="task-side">
             <div class="task-count">${t.items.length} รายการ</div>
             ${can.report() ? `<button type="button" class="btn btn-ghost btn-small add-to-task" data-idx="${i}">+ เพิ่มรายการ</button>` : ""}
-            ${can.edit() ? `<button type="button" class="btn btn-ghost btn-small edit-task" data-idx="${i}">แก้สถานะทั้งงาน</button>` : ""}
+            ${can.edit() ? `<button type="button" class="btn btn-ghost btn-small edit-task" data-idx="${i}">แก้สถานะทั้ง PD</button>` : ""}
           </div>
         </div>
         <div class="task-items" id="task-${i}">
