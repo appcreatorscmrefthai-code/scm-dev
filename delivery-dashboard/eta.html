@@ -16,7 +16,7 @@
 :root{--bg:#0b1120;--panel:#131c2e;--panel2:#1a2540;--rule:#26324d;--text:#eaf0fa;--muted:#8e9bb3;--blue:#4aa8ff;--amber:#f6b93b;--green:#34d08c;--red:#ff4d61}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 "Sarabun","Noto Sans Thai","Leelawadee UI",Tahoma,sans-serif}
-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px clamp(16px,2.2vw,44px);background:linear-gradient(180deg,#1b2742,#141d31);border-bottom:1px solid var(--rule)}
+header{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px clamp(16px,2.2vw,44px);background:linear-gradient(180deg,#1b2742,#141d31);border-bottom:1px solid var(--rule)}
 h1{margin:0;font-size:clamp(20px,2.2vw,32px)} h2{font-size:1.15em;margin:1.4em 0 .4em}
 .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:.9em;color:var(--muted)}
 a.nav,button{font:inherit;color:var(--text);cursor:pointer;background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:.3em .9em;text-decoration:none}
@@ -59,12 +59,14 @@ td input.v{width:7em}
   </div>
   <div class="scroll"><table><thead><tr><th>ชื่อจุดส่ง</th><th>ละติจูด</th><th>ลองจิจูด</th><th>รัศมี (ม.)</th><th></th></tr></thead><tbody id="pl"></tbody></table></div>
 
+  <div id="adminSec" hidden>
   <h2>2) ค่าตั้งของ ETA และ GPS</h2>
   <p class="muted" id="cfgHint"></p>
   <div class="scroll"><table><thead><tr><th>ค่า</th><th>ความหมาย</th><th>ค่าที่ตั้ง</th><th></th></tr></thead><tbody id="cf"></tbody></table></div>
 
   <h2>3) ตำแหน่งรถล่าสุดที่ได้รับ</h2>
   <div class="scroll"><table><thead><tr><th>ทะเบียน</th><th>ระบบ GPS</th><th>เวลากล่อง GPS</th><th>ความเร็ว</th><th>สถานะ</th><th>พิกัด</th></tr></thead><tbody id="gp"></tbody></table></div>
+  </div>
 </main>
 <script src="config.js?v=22"></script>
 <script src="api.js?v=22"></script>
@@ -88,7 +90,7 @@ function parseCoord(t) {
 async function run(fn) { try { await fn(); } catch (e) { say(e.message || String(e), 'err'); } }
 
 async function load() {
-  const [st, miss, gps] = await Promise.all([Auth.rpc('eta_settings'), Auth.rpc('places_missing'), Auth.rpc('gps_list')]);
+  const [st, miss, gps] = await Promise.all([Auth.rpc('eta_settings'), Auth.rpc('places_missing'), admin ? Auth.rpc('gps_list') : Promise.resolve([])]);
   $('miss').innerHTML = miss.length ? '<span class="muted">จุดส่งที่ยังไม่มีพิกัด (7 วันล่าสุด) กดเพื่อเติมชื่อ :</span> ' + miss.map(n => `<button type="button" data-n="${esc(n)}">${esc(n)}</button>`).join('') : '<span class="muted">จุดส่งในแผน 7 วันล่าสุดมีพิกัดครบแล้ว</span>';
   $('miss').querySelectorAll('button').forEach(b => b.onclick = () => { $('pn').value = b.dataset.n; $('pc').focus(); });
   $('pl').innerHTML = st.places.map(p => `<tr><td>${esc(p.name)}</td><td>${p.lat}</td><td>${p.lng}</td><td>${p.radius}</td>
@@ -124,7 +126,9 @@ $('padd').onclick = () => run(async () => {
   if (!SB.ON) return say('โหมดตัวอย่าง: ยังไม่ได้ใส่ SUPABASE_URL ใน config.js', 'err');
   if (!Auth.get()) await Auth.login();
   Auth.badge($('userBox'));
-  edit = Auth.canEdit(); admin = edit;          // s21 : ตั้งค่า ETA = สิทธิ์ edit ขึ้นไป
+  edit = Auth.canEdit(); admin = Auth.isAdmin();          // s22 : edit เห็นเฉพาะข้อ 1 (พิกัดจุดส่ง), admin เห็นครบ, viewer เข้าไม่ได้
+  if (!edit) { document.querySelector('main').innerHTML = '<p class="muted">หน้านี้สำหรับสิทธิ์ edit ขึ้นไป</p>'; return; }
+  $('adminSec').hidden = !admin;
   $('addRow').hidden = !edit;
   run(load);
 })();

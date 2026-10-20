@@ -27,20 +27,20 @@ body{background:var(--bg);color:var(--text);font-family:"Sarabun","Noto Sans Tha
 button{font:inherit;color:inherit}
 
 /* ---- header ---- */
-header{display:flex;align-items:center;justify-content:space-between;gap:10px 16px;flex-wrap:wrap;
+header{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:flex-start;gap:6px 16px;flex-wrap:wrap;
   padding:clamp(6px,min(1.2vw,1.5vh),22px) clamp(16px,2.2vw,44px);background:linear-gradient(180deg,#1b2742,#141d31);
   border-bottom:1px solid var(--rule)}
-h1{margin:0;font-size:clamp(18px,min(2.3vw,4.2vh),44px);font-weight:700;letter-spacing:.01em}
+h1{margin:0;flex:1 1 100%;font-size:clamp(18px,min(2.3vw,4.2vh),44px);font-weight:700;letter-spacing:.01em}
 h1 small{font-weight:500;color:var(--muted);font-size:.55em;margin-left:.6em}
 .clock{white-space:nowrap;font-size:clamp(18px,min(2.3vw,4.2vh),44px);font-weight:700;font-variant-numeric:tabular-nums}
 .datepick{background:var(--panel2);border:1px solid var(--rule);color:var(--text);border-radius:8px;
   padding:4px 8px;font:inherit;font-size:.8em;color-scheme:dark}
-.right{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap}
+.right{flex:1 1 100%;display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap}
 button.nav{font-family:inherit;cursor:pointer}
 .nav{color:var(--text);text-decoration:none;background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:4px 12px;font-size:.8em;white-space:nowrap}
 .nav:hover,.nav:focus-visible{border-color:var(--departed)}
 .user{font-size:.75em;color:var(--muted);white-space:nowrap}
-.search{flex:1 1 16em;max-width:34em;position:relative;font-size:.8em}
+.search{flex:1 1 16em;max-width:34em;min-width:12em;position:relative;font-size:.8em}
 .search input{width:100%;font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:5px 2.2em 5px 10px}
 .search input::placeholder{color:var(--muted)}
 .spin{display:inline-block;width:1em;height:1em;margin-right:.6em;vertical-align:-.15em;border:.16em solid var(--rule);border-top-color:var(--blue);border-radius:50%;animation:spin .9s linear infinite}
@@ -179,6 +179,8 @@ a.sum.cxl:hover,a.sum.cxl:focus-visible{border-color:var(--late);outline:none}
 footer{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
   padding:clamp(4px,min(.8vw,1vh),16px) clamp(16px,2.2vw,44px);color:var(--muted);font-size:.85em}
 .legend{display:flex;gap:1.2em;flex-wrap:wrap}
+.fr{display:flex;gap:.5em 1.4em;flex-wrap:wrap;justify-content:flex-end;text-align:right}
+#planSync:empty{display:none}
 .legend span::before{content:"";display:inline-block;width:.7em;height:.7em;border-radius:50%;background:var(--c);margin-right:.4em}
 .pager{display:flex;align-items:center;gap:.6em}
 .pager button{all:unset;cursor:pointer;width:2em;height:2em;border-radius:50%;background:var(--panel2);text-align:center;
@@ -258,8 +260,6 @@ dialog::backdrop{background:rgba(3,6,14,.72)}
 <div id="gpsWarn" class="banner bad" hidden role="alert"></div>
 <header>
   <h1 id="title">ติดตามการจัดส่ง</h1>
-  <div class="search"><input id="q" type="search" autocomplete="off" aria-label="ค้นหางาน"
-    placeholder="ค้นหา Task Code, LN Num, ทะเบียนรถ, จุดส่ง (หลายค่าคั่นด้วย , )"><button id="qClear" type="button" aria-label="ล้างคำค้นหา" hidden>×</button></div>
   <div class="right">
     <a class="nav" href="index.html">ปฏิทิน</a>
     <a class="nav" href="dashboard.html">วันนี้</a>
@@ -267,9 +267,11 @@ dialog::backdrop{background:rgba(3,6,14,.72)}
     <a class="nav" id="routeLink" href="route.html" title="ดูแผนงานของวันนี้บนแผนที่ (วางแผนเส้นทางจัดส่ง)">วางแผนเส้นทาง</a>
     <a class="nav" href="gps.html" title="ภาพรวมรถทุกคันบนแผนที่ + Delay Trend">สรุปภาพรวม</a>
     <button class="nav" id="newTask" type="button" hidden>+ สร้างงาน</button>
-    <span class="user" id="userBox"></span>
     <input class="datepick" id="datepick" type="date" aria-label="เลือกวันที่">
+    <div class="search"><input id="q" type="search" autocomplete="off" aria-label="ค้นหางาน"
+      placeholder="ค้นหา Task Code, LN Num, ทะเบียนรถ, จุดส่ง (หลายค่าคั่นด้วย , )"><button id="qClear" type="button" aria-label="ล้างคำค้นหา" hidden>×</button></div>
     <div class="clock" id="clock"></div>
+    <span class="user" id="userBox"></span>
   </div>
 </header>
 <div class="summary" id="summary"></div>
@@ -284,7 +286,7 @@ dialog::backdrop{background:rgba(3,6,14,.72)}
     <span style="--c:var(--follow)">Follow (เช็คอินช้า / เช็คอินแล้วไม่ออก / ส่งข้อมูลบนถนนช้า / กลับช้า)</span><span style="--c:var(--late)">Delay (เลยเวลาถึง)</span>
   </div>
   <div class="pager" id="pager"></div>
-  <div id="updated"></div>
+  <div class="fr"><span id="planSync" title="เวลาที่ Bot หรือผู้วางแผนส่งแผนงานขึ้นระบบล่าสุด"></span><span id="updated"></span></div>
 </footer>
 <dialog id="dlg"><div class="dh"><h2 id="dlgTitle"></h2><div><button id="dlgEdit">แก้ไข</button><button id="dlgCancel" hidden>ยกเลิกงาน</button><button id="dlgDel" hidden>ลบงาน</button><button id="dlgClose">ปิด</button></div></div><div class="emsg" id="actMsg" role="alert"></div><div class="db" id="dlgBody"></div></dialog>
 
@@ -474,9 +476,19 @@ async function gpsWatch() {      // เตือนเมื่อบอตด�
     else el.hidden = true;
   } catch (e) { /* ยังไม่ได้อัปเดต SQL หรือสิทธิ์ไม่พอ : ไม่แสดงอะไร */ }
 }
+async function planWatch() {      // เวลาที่ส่งแผนขึ้นระบบล่าสุด (Bot หรือคนส่งจาก Excel)
+  const el = $('planSync');
+  try {
+    const r = await Auth.rpc('plan_last_sync');
+    if (r && r.at) {
+      const d = new Date(r.at), f = o => d.toLocaleString('th-TH', Object.assign({ timeZone: 'Asia/Bangkok' }, o));
+      el.textContent = 'ส่งแผนขึ้นล่าสุดเมื่อ ' + f({ day: 'numeric', month: 'short' }) + ' ' + f({ hour: '2-digit', minute: '2-digit', hour12: false }) + ' น.' + (r.by ? ' · ' + r.by : '');
+    } else el.textContent = '';
+  } catch (e) { /* ยังไม่ได้รัน SQL s22 : ไม่แสดงอะไร */ }
+}
 async function loadEta(date) {
   if (DEMO) return;
-  gpsWatch(); loadGrace();
+  gpsWatch(); loadGrace(); planWatch();
   try {
     const rows = await Auth.rpc('eta_for', { p_date: date });
     if ((pickedDate || today()) !== date) return;
@@ -787,7 +799,7 @@ function openDetail(code) {
     h += `<div class="log"><h3>${title}</h3>`;
     if (pr.length) {
       const lastP = pr[pr.length - 1], closeAt = new Date(new Date(lastP.time).getTime() + 864e5);
-      h += `<div class="t">อัปโหลด ${pr.length} ครั้ง · รูปรวม ${n}/${d === 'QA' ? 50 : 20} · ` + (Date.now() > closeAt ? 'ปิดรับรูปแล้ว' : 'เปิดรับรูปถึง ' + hhmm(closeAt.toISOString()) + ' น.') + `</div>`;
+      h += `<div class="t">อัปโหลด ${pr.length} ครั้ง · รูปรวม ${n} · ` + (Date.now() > closeAt ? 'ปิดรับรูปแล้ว' : 'เปิดรับรูปถึง ' + hhmm(closeAt.toISOString()) + ' น.') + `</div>`;
       pr.forEach(r => { h += `<div style="margin-bottom:.6em"><div class="t">${hhmm(r.time)} น.${srcTag(r.source || 'คน')}</div>${r.note ? `<p>${esc(r.note)}</p>` : ''}${thumbs(r.photos, d, `${t.taskCode} · ${title}`)}</div>`; });
     } else h += `<div class="t">ยังไม่มีข้อมูล</div>`;
     h += `</div>`;

@@ -16,7 +16,7 @@
 :root{--bg:#0b1120;--panel:#131c2e;--panel2:#1a2540;--rule:#26324d;--text:#eaf0fa;--muted:#8e9bb3;--blue:#4aa8ff;--amber:#f6b93b;--green:#34d08c;--red:#ff4d61;--grey:#8e9bb3}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 "Sarabun","Noto Sans Thai","Leelawadee UI",Tahoma,sans-serif}
-header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px clamp(12px,2vw,36px);background:linear-gradient(180deg,#1b2742,#141d31);border-bottom:1px solid var(--rule)}
+header{position:sticky;top:0;z-index:1200;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px clamp(12px,2vw,36px);background:linear-gradient(180deg,#1b2742,#141d31);border-bottom:1px solid var(--rule)}
 h1{margin:0;font-size:clamp(20px,2.2vw,30px)} h2{font-size:1.1em;margin:0 0 .5em}
 .right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.9em;color:var(--muted)}
 a.nav,button,.dbx,select{font:inherit;color:var(--text);cursor:pointer;background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:.25em .8em;text-decoration:none}

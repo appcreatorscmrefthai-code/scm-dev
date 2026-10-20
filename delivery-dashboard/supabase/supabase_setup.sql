@@ -546,6 +546,10 @@ begin
     returning (t.created_at = v_now) into v_new;
     if v_new then v_ins := v_ins + 1; else v_upd := v_upd + 1; end if;
   end loop;
+  if v_ins + v_upd > 0 then      -- s22 : จำไว้ว่าส่งแผนขึ้นระบบล่าสุดเมื่อไหร่ ใคร (Bot / คน) ใช้แสดงที่ Dashboard
+    insert into public.app_flags (key, value, at) values ('last_plan_sync', coalesce(v_who, ''), v_now)
+    on conflict (key) do update set value = excluded.value, at = excluded.at;
+  end if;
   return jsonb_build_object('inserted', v_ins, 'updated', v_upd);
 end $$;
 
@@ -1279,6 +1283,19 @@ grant execute on function public.gps_push(jsonb), public.eta_for(date), public.p
 create table if not exists public.app_flags (key text primary key, value text not null default '', at timestamptz not null default now());
 alter table public.app_flags enable row level security;
 revoke all on public.app_flags from public, anon, authenticated;
+
+-- s22 : ส่งแผนขึ้นระบบล่าสุดเมื่อไหร่ (ดูที่ Dashboard) : { at, by }
+create or replace function public.plan_last_sync() returns json
+language plpgsql stable security definer set search_path = public as $$
+declare r public.app_flags;
+begin
+  if not public.is_member() then raise exception 'FORBIDDEN'; end if;
+  select * into r from public.app_flags where key = 'last_plan_sync';
+  if not found then return json_build_object('at', null, 'by', ''); end if;
+  return json_build_object('at', r.at, 'by', r.value);
+end $$;
+revoke all on function public.plan_last_sync() from public, anon;
+grant execute on function public.plan_last_sync() to authenticated;
 
 -- ย้ายข้อมูลเก่าครั้งเดียว : รถออก (เดิมเก็บใน pickup_log) -> road_log type 'depart'
 do $$

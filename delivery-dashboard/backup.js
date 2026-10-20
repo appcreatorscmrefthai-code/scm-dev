@@ -214,7 +214,10 @@
     return m;
   }
   async function generate() {
-    const btn = $('gen'), from = $('dFrom').value || null, to = $('dTo').value || null;
+    const btn = $('gen'), to = $('dTo').value || null;
+    let from = $('dFrom').value || null;
+    if (!from) { from = monthsBefore(to || nowBkkDate(), 6); setRange(from, $('dTo').value); }      // ไม่เลือกวันเริ่ม = ย้อนหลัง 6 เดือนจากวันสิ้นสุด (หรือวันนี้)
+    if (from < monthsBefore(to || nowBkkDate(), 6)) return prog('ดึงข้อมูลได้ครั้งละไม่เกิน 6 เดือน : เลือกช่วงวันที่ให้สั้นลง (ถ้าต้องการข้อมูลเก่ากว่านี้ ดึงทีละช่วง)', 'err');
     if (from && to && to < from) return prog('ช่วงวันที่ไม่ถูกต้อง : “ถึงวันที่” ต้องไม่ก่อน “ตั้งแต่วันที่”', 'err');
     btn.disabled = true; prog('กำลังโหลดไลบรารีสร้างไฟล์ Excel…');
     try {
@@ -253,12 +256,19 @@
     finally { btn.disabled = false; }
   }
 
+  function monthsBefore(ymd, n) {              // วันที่เดียวกันของ n เดือนก่อน (YYYY-MM-DD)
+    const d = new Date(ymd + 'T00:00:00Z'), day = d.getUTCDate();
+    d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - n);
+    const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    d.setUTCDate(Math.min(day, last));
+    return d.toISOString().slice(0, 10);
+  }
   function setRange(a, b) { $('dFrom').value = a || ''; $('dTo').value = b || ''; DateBox.sync($('dFrom')); DateBox.sync($('dTo')); }
   function preset(k) {
     const t = nowBkkDate();
     if (k === 'month') setRange(t.slice(0, 8) + '01', '');
     else if (k === '30') setRange(bkk(Date.now() - 29 * 86400e3).toISOString().slice(0, 10), '');
-    else setRange('', '');
+    else setRange(monthsBefore(t, 6), '');      // ย้อนหลัง 6 เดือน นับจากวันที่กด
   }
 
   DateBox.attach($('dFrom')); DateBox.attach($('dTo'));

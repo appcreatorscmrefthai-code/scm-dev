@@ -16,7 +16,7 @@
 :root{--bg:#0b1120;--panel:#131c2e;--panel2:#1a2540;--rule:#26324d;--text:#eaf0fa;--muted:#8e9bb3;--blue:#4aa8ff;--amber:#f6b93b;--green:#34d08c;--red:#ff4d61}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 "Sarabun","Noto Sans Thai","Leelawadee UI",Tahoma,sans-serif}
-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px clamp(16px,2.2vw,44px);background:linear-gradient(180deg,#1b2742,#141d31);border-bottom:1px solid var(--rule)}
+header{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px clamp(16px,2.2vw,44px);background:linear-gradient(180deg,#1b2742,#141d31);border-bottom:1px solid var(--rule)}
 h1{margin:0;font-size:clamp(20px,2.2vw,32px)} h2{font-size:1.15em;margin:0 0 .5em}
 .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:.9em;color:var(--muted)}
 a.nav,button,.dbx{font:inherit;color:var(--text);cursor:pointer;background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:.3em .9em;text-decoration:none}
@@ -79,14 +79,14 @@ code{background:var(--panel2);border:1px solid var(--rule);border-radius:5px;pad
 
   <section aria-labelledby="h3s">
     <h2 id="h3s">3) สร้างไฟล์ Excel ตอนนี้ (ข้อมูลสด)</h2>
-    <p class="muted small" style="margin-top:0">ดึงข้อมูลปัจจุบันจากระบบแล้วสร้างไฟล์ Excel ในเครื่องคุณทันที (ใช้ชีตและคอลัมน์เดียวกับไฟล์ Backup รายคืน) ไม่ต้องรอรอบ 22:00 น.</p>
+    <p class="muted small" style="margin-top:0">ดึงข้อมูลปัจจุบันจากระบบแล้วสร้างไฟล์ Excel ในเครื่องคุณทันที (ใช้ชีตและคอลัมน์เดียวกับไฟล์ Backup รายคืน) ไม่ต้องรอรอบ 22:00 น. · ดึงได้ครั้งละไม่เกิน <b>6 เดือน</b></p>
     <div class="row">
       <label>ตั้งแต่วันที่<input type="date" id="dFrom" class="dbx"></label>
       <label>ถึงวันที่<input type="date" id="dTo" class="dbx"></label>
       <div class="tags" aria-label="ช่วงวันที่ที่ใช้บ่อย">
         <button type="button" data-p="month">เดือนนี้</button>
         <button type="button" data-p="30">30 วันล่าสุด</button>
-        <button type="button" data-p="all">ทั้งหมด</button>
+        <button type="button" data-p="all" title="ย้อนหลัง 6 เดือน นับจากวันนี้">ย้อนหลัง 6 เดือน</button>
       </div>
     </div>
     <div class="row"><button class="primary" id="gen">สร้างและดาวน์โหลด Excel</button></div>
