@@ -259,10 +259,10 @@ language sql stable security definer set search_path = public as $$
   select coalesce(sum(cardinality(l.unload)), 0)::int from public.road_log l
   where l.task_code = p_task and ((p_stop = 0 and l.type = 'return') or (p_stop > 0 and l.stop = p_stop and l.type in ('arrive', 'unload')))
 $$;
--- จำนวนรูปสูงสุดของแต่ละฝ่าย (รวมทุกครั้งที่ส่ง) : WH 20 รูป, QA 50 รูป
+-- จำนวนรูปสูงสุดของแต่ละฝ่าย (รวมทุกครั้งที่ส่ง) : WH 50 รูป, QA 50 รูป
 drop function if exists public.dept_photo_max(text);
 create or replace function public.dept_photo_max(p_dept text, p_intl boolean default false) returns int
-language sql immutable as $$ select case when p_intl then 300 when p_dept = 'QA' then 50 else 20 end $$;     -- งานต่างประเทศ WH / QA ฝ่ายละ 300 รูป
+language sql immutable as $$ select case when p_intl then 300 when p_dept = 'QA' then 50 else 50 end $$;     -- งานต่างประเทศ WH / QA ฝ่ายละ 300 รูป
 create or replace function public.dept_photo_count(p_task text, p_dept text) returns int
 language sql stable security definer set search_path = public as $$
   select coalesce(sum(cardinality(l.photos)), 0)::int from public.pickup_log l where l.task_code = p_task and l.dept = p_dept and l.source <> 'GPS'
@@ -286,7 +286,7 @@ begin
   v_note := left(coalesce(p->>'note', ''), 2000);
 
   if p->>'form' in ('pickup', 'qa') then
-    -- รูปส่งงาน WH (pickup.html) / QA (qa.html) : ส่งได้หลายครั้งจนกว่าจะผ่าน 24 ชม. นับจากอัปโหลดครั้งล่าสุดของฝ่ายนั้น รวมไม่เกิน WH 20 / QA 50 รูป
+    -- รูปส่งงาน WH (pickup.html) / QA (qa.html) : ส่งได้หลายครั้งจนกว่าจะผ่าน 24 ชม. นับจากอัปโหลดครั้งล่าสุดของฝ่ายนั้น รวมไม่เกิน WH 50 / QA 50 รูป
     v_dept := case when p->>'form' = 'qa' then 'QA' else 'WH' end;
     -- งานต่างประเทศ WH : ต้องส่งรูปรถเข้าก่อน ; ส่งรูปส่งงานครั้งแรก = เวลารถออก (จบงาน)
     if v_dept = 'WH' and public.task_intl(t.job_type, t.vehicle_type)
@@ -415,7 +415,7 @@ begin
   if p->>'form' in ('pickup', 'qa') then
     select photos, dept into cur, v_dept from public.pickup_log where id = v_id and task_code = t.task_code for update;
     if not found then raise exception 'ไม่พบรายการที่จะแนบรูป'; end if;
-    v_other := public.dept_photo_count(t.task_code, v_dept) - cardinality(cur);          -- รวมทุกครั้งของฝ่ายนั้นไม่เกิน WH 20 / QA 50 รูป
+    v_other := public.dept_photo_count(t.task_code, v_dept) - cardinality(cur);          -- รวมทุกครั้งของฝ่ายนั้นไม่เกิน WH 50 / QA 50 รูป
     add := public.photo_list(to_jsonb(cur) || coalesce(p->'photos', '[]'::jsonb), pre, greatest(cardinality(cur), public.dept_photo_max(v_dept, public.task_intl(t.job_type, t.vehicle_type)) - v_other), t.key);
     update public.pickup_log set photos = coalesce(add, '{}') where id = v_id;
   else

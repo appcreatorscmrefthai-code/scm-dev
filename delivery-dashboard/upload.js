@@ -1,5 +1,5 @@
 /* ฟอร์มอัปโหลดรูปส่งงาน ใช้ร่วมกัน 2 หน้า : pickup.html (WH คลังสินค้า) และ qa.html (QA ประกันคุณภาพ)
-   - งานในประเทศ : ส่งได้หลายครั้ง รวมไม่เกิน WH 20 รูป / QA 50 รูป (ครั้งละไม่เกิน 50 MB)
+   - งานในประเทศ : ส่งได้หลายครั้ง รวมไม่เกิน WH 50 รูป / QA 50 รูป (ครั้งละไม่เกิน 50 MB)
    - งานต่างประเทศ (ประเภทรถ CL 20FT / CL 40FT / CL 40HC / LCL / DHL) : หน้าเดิมเปลี่ยนเป็นโหมดต่างประเทศเอง
        WH และ QA รวมไม่เกิน 300 รูป (ครั้งละไม่เกิน 300 MB)
        WH มีเพิ่ม : 2. รูปรถเข้า (ส่งครั้งแรก = เวลารถเข้า) และ 3. รูปส่งงาน (ส่งครั้งแรก = เวลารถออก = จบงาน)
@@ -9,7 +9,7 @@
 (function () {
   const { $, esc, hhmm } = DF;
   const DEPT = window.UPLOAD_DEPT === 'QA' ? 'QA' : 'WH', FORM = DEPT === 'QA' ? 'qa' : 'pickup';
-  const LIMIT = { WH: [20, 50], QA: [50, 50], INTL: [300, 300] };      // [จำนวนรูปรวม, MB ต่อครั้ง]
+  const LIMIT = { WH: [50, 50], QA: [50, 50], INTL: [300, 300] };      // [จำนวนรูปรวม, MB ต่อครั้ง]
   let task = null, busy = false, MAX = LIMIT[DEPT][0];
   const cfg = { key: 'photos', kind: FORM, el: 'pkPhotos', max: LIMIT[DEPT][0], maxMB: LIMIT[DEPT][1], label: 'รูปส่งงาน', context: () => ({ taskCode: task && task.taskCode }) };
   const picker = DF.makePicker(cfg);
