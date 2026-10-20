@@ -69,6 +69,7 @@ footer{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:
     <a class="btn" href="route.html" title="วางแผนเส้นทางจัดส่งบนแผนที่">วางแผนเส้นทาง</a>
     <a class="btn" href="backup.html" id="backupLink" hidden>Backup</a>
     <a class="btn" href="eta.html" title="ตั้งค่า ETA / GPS / พิกัดต้นทาง">ตั้งค่า</a>
+    <a class="btn" href="users.html" id="usersLink" hidden title="ตั้งค่าผู้ใช้และสิทธิ์ (Admin)">ผู้ใช้</a>
     <span id="userBox" style="font-size:.8em;color:var(--muted);white-space:nowrap"></span>
   </div>
 </header>
@@ -102,7 +103,7 @@ async function load() {
     let d;
     if (DEMO) d = { ok: true, days: month === '2026-09' ? { '2026-09-29': { total: 4, done: 4 }, '2026-09-30': { total: 6, done: 1, canceled: 1 }, '2026-09-25': { total: 0, done: 0, canceled: 2 } } : {} };
     else d = await Auth.getJson({ action: 'month', month });
-    Auth.badge($('userBox')); if ($('backupLink')) $('backupLink').hidden = false;      // s21 : viewer ดูได้ทุกหน้า (ดาวน์โหลด Backup เฉพาะ edit ขึ้นไป)
+    Auth.badge($('userBox')); if ($('backupLink')) $('backupLink').hidden = false; if ($('usersLink')) $('usersLink').hidden = !Auth.isAdmin();      // s21 : viewer ดูได้ทุกหน้า (ดาวน์โหลด Backup เฉพาะ edit ขึ้นไป)
     if (my !== seq) return;
     if (!d.ok) throw new Error(d.error);
     days = d.days || {};
