@@ -110,6 +110,8 @@
   .badge.perm { background: var(--blue-bg); color: var(--blue); }
   .badge.remove { background: var(--red-bg); color: var(--red); }
   .badge.gray { background: var(--gray-bg); color: var(--muted); }
+  .badge.pdst { background: #fff; color: #5b4bb7; border: 1px solid #cfc7f3; font-weight: 600; }
+  .task-head .code .badge { vertical-align: middle; margin-left: 8px; font-size: 12px; }
 
   .session-list { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 12px; }
   .session-item { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0;
@@ -191,6 +193,10 @@
   .role-legend { font-size: 13px; color: var(--muted); line-height: 1.7; }
   .role-legend b { color: var(--ink); }
 
+  /* แถบบนของหน้าติดตามงาน ค้างไว้ใต้หัวเว็บตอนเลื่อน (จอคอม) */
+  @media (min-width: 761px) {
+    .dash-head { position: sticky; top: var(--hdr-h, 0px); z-index: 5; background: var(--bg); padding-top: 12px; margin-top: -12px; }
+  }
   .dash-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
   .dash-top .stats { margin-bottom: 0; }
   .dash-top #dashExport { white-space: nowrap; }
@@ -305,7 +311,7 @@
 
       <div class="two-col">
         <div class="field">
-          <label>ผู้แจ้ง</label>
+          <label>แจ้งโดย</label>
           <input id="reporterName" type="text" readonly>
         </div>
         <div class="field">
@@ -416,13 +422,14 @@
 
   <!-- ====================== Dashboard ====================== -->
   <section id="view-dashboard" class="view">
+    <div class="dash-head">
     <div class="dash-top">
       <div class="stats" id="dashStats"></div>
       <button type="button" id="dashExport" class="btn btn-success">Export Excel</button>
     </div>
     <div class="toolbar">
       <input id="dashSearch" type="search" placeholder="ค้นหา รหัสงาน FG / เลข PD / ชื่องาน / รหัสวัตถุดิบ / ชื่อ / หมายเหตุ">
-      <select id="dashReporter"><option value="">ผู้แจ้งทั้งหมด</option></select>
+      <select id="dashReporter"><option value="">แจ้งโดย: ทุกคน</option></select>
       <select id="dashStatus"><option value="">สถานะทั้งหมด</option></select>
       <div class="seg" id="dashMode">
         <button type="button" data-mode="table" class="on">ตาราง</button>
@@ -432,9 +439,10 @@
     </div>
     <div class="bulkbar" id="bulkBar" hidden>
       <span class="grow" id="bulkText"></span>
-      <button type="button" id="bulkEdit" class="btn btn-primary btn-small">แก้ สถานะ / เอ็นจิเนียร์</button>
+      <button type="button" id="bulkEdit" class="btn btn-primary btn-small">แก้ สถานะ / แก้ไข BOM โดย</button>
       <button type="button" id="bulkDelete" class="btn btn-danger btn-small" data-need="admin">ลบ</button>
       <button type="button" id="bulkClear" class="btn btn-ghost btn-small">ยกเลิกที่เลือก</button>
+    </div>
     </div>
     <div id="dashList"><div class="msg">กำลังโหลดข้อมูล…</div></div>
   </section>
@@ -458,7 +466,7 @@
       <h2><span class="n">2</span>ตั้งค่าก่อนนำเข้า</h2>
       <div class="two-col">
         <div class="field">
-          <label>ผู้แจ้ง</label>
+          <label>แจ้งโดย</label>
           <input id="impReporterName" type="text" readonly>
         </div>
         <div class="field">
@@ -478,7 +486,7 @@
             <tr>
               <th>#</th><th>รหัสงาน FG</th><th>เลข PD</th><th>ชื่องาน FG</th>
               <th>รหัสที่เอาไปใช้ (New Item)</th><th>ชื่อวัตถุดิบ</th><th>จำนวน</th>
-              <th>รหัสเดิม (Item Number)</th><th>สถานะ</th>
+              <th>รหัสเดิม (Item Number)</th><th>สถานะ PD</th><th>สถานะของงาน</th>
             </tr>
           </thead>
           <tbody id="impPreviewBody"></tbody>
@@ -509,7 +517,7 @@
         </div>
         <div class="two-col">
           <div class="field">
-            <label>ชื่อที่แสดง (ใช้เป็นผู้แจ้ง / เอ็นจิเนียร์) <span class="req">*</span></label>
+            <label>ชื่อที่แสดง (ใช้เป็น แจ้งโดย / แก้ไข BOM โดย) <span class="req">*</span></label>
             <input id="nuName" type="text" required>
           </div>
           <div class="field">
@@ -527,7 +535,7 @@
       <div class="role-legend">
         <b>Viewer</b> ดูได้อย่างเดียว ·
         <b>Edit1</b> แจ้งงาน + นำเข้า Excel ·
-        <b>Edit2</b> Edit1 + แก้สถานะของงาน / เอ็นจิเนียร์ ·
+        <b>Edit2</b> Edit1 + แก้สถานะของงาน / แก้ไข BOM โดย ·
         <b>Admin</b> ทำได้ทุกอย่าง + ตั้งค่าผู้ใช้
       </div>
       <div id="usersMsg" class="msg" hidden></div>
@@ -545,13 +553,13 @@
 <!-- ====================== แก้ สถานะ / เอ็นจิเนียร์ ====================== -->
 <div class="modal" id="editModal" hidden>
   <div class="card">
-    <h2 id="editTitle">แก้ สถานะ / เอ็นจิเนียร์</h2>
+    <h2 id="editTitle">แก้ สถานะ / แก้ไข BOM โดย</h2>
     <div class="field">
       <label>สถานะของงาน</label>
       <select id="editStatus"></select>
     </div>
     <div class="field">
-      <label>เอ็นจิเนียร์ผู้รับผิดชอบ</label>
+      <label>แก้ไข BOM โดย</label>
       <select id="editEngineer"></select>
     </div>
     <div class="hint" style="font-size:12px;color:var(--muted);">วันที่แก้ไข จะบันทึกเป็นเวลาที่กดบันทึกให้อัตโนมัติ</div>
@@ -1103,6 +1111,10 @@
     const map = { "เพิ่ม": "add", "ทดแทน (ชั่วคราว)": "temp", "ทดแทน (ถาวร)": "perm", "เอาออก": "remove" };
     return `<span class="badge ${map[type] || "temp"}">${esc(type)}</span>`;
   }
+  // สถานะ PD (จากไฟล์ที่นำเข้า เช่น Started)
+  function pdStatusBadge(v) {
+    return v ? `<span class="badge pdst">${esc(v)}</span>` : "";
+  }
   function statusBadge(status) {
     if (!status) return `<span class="badge gray">ไม่ระบุ</span>`;
     const map = { "อยู่ระหว่างดำเนินการ": "temp", "แจ้งแก้ไข": "perm", "แก้ไขแล้ว": "add" };
@@ -1122,7 +1134,7 @@
     $("dashList").innerHTML = `<div class="msg">กำลังโหลดข้อมูล…</div>`;
     try {
       const [rows, profs] = await Promise.all([
-        fetchAllRows("/rest/v1/bomc_items?select=id,no,created_at,reporter,rm_code,rm_name,qty,edit_type,old_code,fg_code,pd_number,fg_model,use_date,photo_url,note,status,engineer,fix_date&order=created_at.desc,id.desc"),
+        fetchAllRows("/rest/v1/bomc_items?select=id,no,created_at,reporter,rm_code,rm_name,qty,edit_type,old_code,fg_code,pd_number,fg_model,use_date,photo_url,note,status,engineer,fix_date,pd_status&order=created_at.desc,id.desc"),
         can.edit() ? sb("/rest/v1/bomc_profiles?select=name,role&active=is.true&role=in.(edit2,admin)&order=name") : Promise.resolve([]),
       ]);
       engineers = [...new Set((profs || []).map((p) => (p.name || "").trim()).filter(Boolean))];
@@ -1132,10 +1144,10 @@
         editType: r.edit_type || "", oldCode: r.old_code || "",
         fgCode: r.fg_code || "", pdNumber: r.pd_number || "", fgModel: r.fg_model || "",
         useDate: fmtDate(r.use_date), useDateRaw: r.use_date || "", photo: r.photo_url || "", note: r.note || "",
-        status: r.status || "", engineer: r.engineer || "", fixDate: r.fix_date || "",
+        status: r.status || "", engineer: r.engineer || "", fixDate: r.fix_date || "", pdStatus: r.pd_status || "",
       }));
       const reporters = [...new Set(dashItems.map((it) => it.reporter).filter(Boolean))].sort();
-      fillOptions($("dashReporter"), reporters, "ผู้แจ้งทั้งหมด");
+      fillOptions($("dashReporter"), reporters, "แจ้งโดย: ทุกคน");
       for (const id of [...selected]) if (!dashItems.some((it) => it.id === id)) selected.delete(id);
       dashLoaded = true;
       renderDashboard();
@@ -1154,7 +1166,7 @@
       if (rep && it.reporter !== rep) return false;
       if (!ignoreStatus && st && it.status !== st) return false;
       if (!q) return true;
-      return [it.fgCode, it.fgModel, it.pdNumber, it.rmCode, it.rmName, it.oldCode, it.note, it.reporter, it.engineer]
+      return [it.fgCode, it.fgModel, it.pdNumber, it.pdStatus, it.rmCode, it.rmName, it.oldCode, it.note, it.reporter, it.engineer]
         .join(" ").toLowerCase().includes(q);
     });
   }
@@ -1195,13 +1207,13 @@
           <div class="top">
             ${editable ? `<button type="button" class="btn btn-edit btn-small editRow" data-id="${it.id}">แก้ไข</button>` : ""}
             ${editable ? `<input type="checkbox" class="selRow" data-id="${it.id}" ${selected.has(it.id) ? "checked" : ""}>` : ""}
-            <div class="grow">${it.fixDate ? `แก้ไข <b>${esc(it.fixDate)}</b>` : "ยังไม่แก้ไข"}${it.engineer ? ` · <b>${esc(it.engineer)}</b>` : ""}</div>
+            <div class="grow">${it.fixDate ? `แก้ไข <b>${esc(it.fixDate)}</b>` : "ยังไม่แก้ไข"}${it.engineer ? ` โดย <b>${esc(it.engineer)}</b>` : ""}</div>
             ${statusBadge(it.status)}
           </div>
           <div class="rm"><span>${esc(it.rmName || it.rmCode)}</span><span class="q">× ${esc(it.qty)}</span></div>
           <div class="sub">${esc(it.rmCode)}${it.oldCode ? " · รหัสเดิม " + esc(it.oldCode) : ""} ${editBadge(it.editType)}</div>
-          <div class="sub"><b>${esc(it.pdNumber || "-")}</b> · ${esc(it.fgCode)}${it.fgModel ? " · " + esc(it.fgModel) : ""}</div>
-          <div class="sub">แจ้ง ${esc(fmtDateTime(it.date))} · ${esc(it.reporter)} · No. ${esc(it.no)}${it.useDate ? " · ใช้ " + esc(it.useDate) : ""}</div>
+          <div class="sub"><b>${esc(it.pdNumber || "-")}</b>${it.pdStatus ? " " + pdStatusBadge(it.pdStatus) : ""} · ${esc(it.fgCode)}${it.fgModel ? " · " + esc(it.fgModel) : ""}</div>
+          <div class="sub">แจ้ง ${esc(fmtDateTime(it.date))} โดย ${esc(it.reporter)} · No. ${esc(it.no)}${it.useDate ? " · ใช้ " + esc(it.useDate) : ""}</div>
           ${it.note ? `<div class="sub">${esc(it.note)}</div>` : ""}
           ${it.photo ? `<div class="sub"><a href="${esc(it.photo)}" target="_blank" rel="noopener">ดูรูป</a></div>` : ""}
         </div>`).join("")}</div>${moreHtml}`;
@@ -1212,10 +1224,10 @@
     const head = [
       editable ? "<th>แก้ไข</th>" : "",
       editable ? `<th><input type="checkbox" id="selAll" ${allOn ? "checked" : ""} title="เลือกทั้งหมดที่แสดง"></th>` : "",
-      "<th>วันที่แก้ไข</th><th>สถานะของงาน</th><th>เอ็นจิเนียร์ผู้รับผิดชอบ</th>",
-      "<th>วันที่แจ้ง</th><th>No.</th><th>ผู้แจ้ง</th><th>รหัสที่เอาไปใช้</th><th>ชื่อวัตถุดิบ</th><th>จำนวนที่ใช้</th>",
-      "<th>ชนิดการแก้ไข</th><th>รหัสเดิม</th><th>รหัสงาน FG</th><th>เลข PD</th><th>ชื่องาน FG</th><th>วันที่นำไปใช้</th>",
-      "<th>รูปถ่าย</th><th>หมายเหตุ</th>",
+      "<th>วันที่แก้ไข</th><th>สถานะของงาน</th><th>แก้ไข BOM โดย</th>",
+      "<th>วันที่แจ้ง</th><th>No.</th><th>รหัสที่เอาไปใช้</th><th>ชื่อวัตถุดิบ</th><th>จำนวนที่ใช้</th>",
+      "<th>ชนิดการแก้ไข</th><th>รหัสเดิม</th><th>รหัสงาน FG</th><th>เลข PD</th><th>สถานะ PD</th><th>ชื่องาน FG</th><th>วันที่นำไปใช้</th>",
+      "<th>รูปถ่าย</th><th>หมายเหตุ</th><th>แจ้งโดย</th>",
     ].join("");
     const body = shown.map((it) => `
       <tr class="${selected.has(it.id) ? "sel" : ""}">
@@ -1226,7 +1238,6 @@
         <td class="nw">${esc(it.engineer)}</td>
         <td class="nw">${esc(fmtDateTime(it.date))}</td>
         <td class="num">${esc(it.no)}</td>
-        <td class="nw">${esc(it.reporter)}</td>
         <td class="nw">${esc(it.rmCode)}</td>
         <td class="wrap">${esc(it.rmName)}</td>
         <td class="num">${esc(it.qty)}</td>
@@ -1234,10 +1245,12 @@
         <td class="nw">${esc(it.oldCode)}</td>
         <td class="nw">${esc(it.fgCode)}</td>
         <td class="nw">${esc(it.pdNumber)}</td>
+        <td>${pdStatusBadge(it.pdStatus)}</td>
         <td class="nw">${esc(it.fgModel)}</td>
         <td class="nw">${esc(it.useDate)}</td>
         <td>${it.photo ? `<a href="${esc(it.photo)}" target="_blank" rel="noopener">ดูรูป</a>` : ""}</td>
         <td class="wrap">${esc(it.note)}</td>
+        <td class="nw">${esc(it.reporter)}</td>
       </tr>`).join("");
     $("dashList").innerHTML = `
       <div class="tbl-wrap"><table class="grid"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>${moreHtml}`;
@@ -1259,6 +1272,11 @@
     }));
     $("dashList").querySelectorAll(".editRow").forEach((b) => b.addEventListener("click", () => openEdit([Number(b.dataset.id)])));
   }
+
+  // ความสูงหัวเว็บ (ใช้ค้างแถบบนของหน้าติดตามงาน)
+  const setHdrH = () => document.documentElement.style.setProperty("--hdr-h", document.querySelector("header").offsetHeight + "px");
+  window.addEventListener("resize", setHdrH);
+  if (window.ResizeObserver) new ResizeObserver(setHdrH).observe(document.querySelector("header"));
 
   // จอแคบ (มือถือ) แสดงเป็นการ์ด, จอกว้างแสดงเป็นตาราง
   const mobileMq = window.matchMedia("(max-width: 760px)");
@@ -1290,17 +1308,17 @@
     if (typeof XLSX === "undefined") { alert("โหลดตัวสร้างไฟล์ Excel ไม่สำเร็จ ลองโหลดหน้าใหม่"); return; }
     const list = filteredItems(false);
     if (!list.length) { alert("ไม่มีข้อมูลตามตัวกรองที่เลือก"); return; }
-    const heads = ["วันที่แก้ไข", "สถานะของงาน", "เอ็นจิเนียร์ผู้รับผิดชอบ", "วันที่แจ้ง", "No.", "ผู้แจ้ง",
+    const heads = ["วันที่แก้ไข", "สถานะของงาน", "แก้ไข BOM โดย", "วันที่แจ้ง", "No.",
       "รหัสที่เอาไปใช้", "ชื่อวัตถุดิบ", "จำนวนที่ใช้", "ชนิดการแก้ไข", "รหัสเดิม (ถ้าทราบ)", "รหัสงาน FG",
-      "เลข PD", "ชื่องาน FG", "วันที่นำไปใช้", "รูปถ่าย", "หมายเหตุ"];
+      "เลข PD", "สถานะ PD", "ชื่องาน FG", "วันที่นำไปใช้", "รูปถ่าย", "หมายเหตุ", "แจ้งโดย"];
     const DT = "d/m/yyyy h:mm", D = "d/m/yyyy";
     const aoa = [heads];
     list.forEach((it) => {
       const fx = serialFromFixDate(it.fixDate);
       aoa.push([
         fx !== null ? fx : it.fixDate, it.status, it.engineer, serialFromIso(it.date), Number(it.no) || it.no,
-        it.reporter, it.rmCode, it.rmName, Number(it.qty) || it.qty, it.editType, it.oldCode, it.fgCode,
-        it.pdNumber, it.fgModel, serialFromYmd(it.useDateRaw), it.photo, it.note,
+        it.rmCode, it.rmName, Number(it.qty) || it.qty, it.editType, it.oldCode, it.fgCode,
+        it.pdNumber, it.pdStatus, it.fgModel, serialFromYmd(it.useDateRaw), it.photo, it.note, it.reporter,
       ]);
     });
     const ws = XLSX.utils.aoa_to_sheet(aoa);
@@ -1310,7 +1328,7 @@
       const p = ws[XLSX.utils.encode_cell({ r, c: 15 })];
       if (p && p.v) { p.l = { Target: String(p.v) }; p.v = "ดูรูป"; }
     }
-    ws["!cols"] = [16, 20, 20, 16, 6, 12, 16, 40, 10, 16, 16, 24, 13, 20, 13, 8, 30].map((w) => ({ wch: w }));
+    ws["!cols"] = [16, 20, 18, 16, 6, 16, 40, 10, 16, 16, 24, 13, 12, 20, 13, 8, 30, 14].map((w) => ({ wch: w }));
     ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: heads.length - 1 } }) };
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "แจ้งแก้ไข BOM by Line");
@@ -1382,7 +1400,7 @@
     const tasks = new Map();
     filtered.forEach((it) => {
       const key = it.pdNumber ? "PD:" + it.pdNumber : (it.fgCode || it.fgModel || "(ไม่ระบุงาน)");
-      if (!tasks.has(key)) tasks.set(key, { fgCode: it.fgCode, fgModel: it.fgModel, pdNumber: it.pdNumber, status: "", engineer: "", fixDate: "", items: [], last: it.date });
+      if (!tasks.has(key)) tasks.set(key, { fgCode: it.fgCode, fgModel: it.fgModel, pdNumber: it.pdNumber, pdStatus: "", status: "", engineer: "", fixDate: "", items: [], last: it.date });
       const t = tasks.get(key);
       t.items.push(it);
       if (new Date(it.date) > new Date(t.last)) t.last = it.date;
@@ -1390,6 +1408,7 @@
       if (!t.fgModel && it.fgModel) t.fgModel = it.fgModel;
       if (!t.pdNumber && it.pdNumber) t.pdNumber = it.pdNumber;
       if (it.status) t.status = it.status;
+      if (it.pdStatus) t.pdStatus = it.pdStatus;
       if (it.engineer) t.engineer = it.engineer;
       if (it.fixDate) t.fixDate = it.fixDate;
     });
@@ -1404,10 +1423,10 @@
       <div class="task-card">
         <div class="task-head" data-idx="${i}">
           <div>
-            <div class="code">${esc(t.pdNumber || t.fgCode || t.fgModel || "(ไม่ระบุงาน)")}</div>
+            <div class="code">${esc(t.pdNumber || t.fgCode || t.fgModel || "(ไม่ระบุงาน)")}${pdStatusBadge(t.pdStatus)}</div>
             <div class="model">${[t.pdNumber ? t.fgCode : "", t.fgModel].filter(Boolean).map(esc).join(" · ")}</div>
             <div class="task-meta">อัปเดตล่าสุด ${esc(fmtDateTime(t.last))}</div>
-            ${(t.engineer || t.fixDate) ? `<div class="task-meta">${t.engineer ? "เอ็นจิเนียร์: " + esc(t.engineer) : ""}${t.engineer && t.fixDate ? " · " : ""}${t.fixDate ? "วันที่แก้ไข: " + esc(t.fixDate) : ""}</div>` : ""}
+            ${(t.engineer || t.fixDate) ? `<div class="task-meta">${t.engineer ? "แก้ไข BOM โดย: " + esc(t.engineer) : ""}${t.engineer && t.fixDate ? " · " : ""}${t.fixDate ? "วันที่แก้ไข: " + esc(t.fixDate) : ""}</div>` : ""}
             <div style="margin-top:6px;">${statusBadge(t.status)}</div>
           </div>
           <div class="task-side">
@@ -1421,7 +1440,7 @@
             <div class="item-row">
               <div class="r1"><div class="rm">${esc(it.rmName || it.rmCode)}</div>${editBadge(it.editType)}</div>
               <div class="r2">${esc(it.rmCode)} · จำนวน ${esc(it.qty)}${it.oldCode ? " · รหัสเดิม " + esc(it.oldCode) : ""}</div>
-              <div class="r2">ผู้แจ้ง ${esc(it.reporter)}${it.useDate ? " · วันที่นำไปใช้ " + esc(it.useDate) : ""}${it.note ? " · " + esc(it.note) : ""}</div>
+              <div class="r2">${it.pdStatus ? "สถานะ PD " + esc(it.pdStatus) + " · " : ""}แจ้งโดย ${esc(it.reporter)}${it.useDate ? " · วันที่นำไปใช้ " + esc(it.useDate) : ""}${it.note ? " · " + esc(it.note) : ""}</div>
               ${it.photo ? `<a class="photo-link" href="${esc(it.photo)}" target="_blank" rel="noopener">ดูรูปถ่าย</a>` : ""}
             </div>`).join("")}
         </div>
@@ -1478,6 +1497,7 @@
     itemCode: ["rmcode", "item number"],
     newCode: ["แก้ไขbom-pd", "new item"],
     qty: ["rmqty", "qty"],
+    pdStatus: ["สถานะ pd", "สถานะ", "pd status", "status"],
   };
   const IMP_FIXED_STATUS = "แจ้งแก้ไข";
   const normHeader = (h) => String(h ?? "").trim().toLowerCase();
@@ -1543,7 +1563,7 @@
           pdNumber: cell("pdNumber"), fgCode: cell("fgCode"), fgModel: cell("fgModel"),
           rmCode, rmName: rec ? rec.productName || "" : "",
           qty: col.qty >= 0 ? Math.abs(Number(r[col.qty]) || 0) : 0,
-          oldCode: cell("itemCode"),
+          oldCode: cell("itemCode"), pdStatus: cell("pdStatus"),
         };
       });
     const missing = Object.keys(col).filter((k) => col[k] < 0);
@@ -1561,8 +1581,8 @@
       <tr>
         <td>${i + 1}</td><td>${esc(r.fgCode)}</td><td>${esc(r.pdNumber)}</td><td>${esc(r.fgModel)}</td>
         <td>${esc(r.rmCode)}</td><td>${esc(r.rmName)}</td><td>${esc(r.qty)}</td>
-        <td>${esc(r.oldCode)}</td><td>${esc(IMP_FIXED_STATUS)}</td>
-      </tr>`).join("") || `<tr><td colspan="9">ไม่มีข้อมูล</td></tr>`;
+        <td>${esc(r.oldCode)}</td><td>${esc(r.pdStatus)}</td><td>${esc(IMP_FIXED_STATUS)}</td>
+      </tr>`).join("") || `<tr><td colspan="10">ไม่มีข้อมูล</td></tr>`;
     $("impPreviewNote").textContent = impRows.length > 50
       ? `แสดงตัวอย่าง 50 จากทั้งหมด ${impRows.length} แถว (นำเข้าจะส่งครบทุกแถว)` : "";
     $("impSubmit").disabled = !(impRows.length > 0 && !impImported);
@@ -1574,7 +1594,7 @@
       .filter((r) => (r.fgCode || r.pdNumber || r.fgModel) && (r.rmCode || r.rmName) && r.qty > 0)
       .map((r) => ({
         status: IMP_FIXED_STATUS, fg_code: r.fgCode, pd_number: r.pdNumber, fg_model: r.fgModel,
-        rm_code: r.rmCode, rm_name: r.rmName, qty: r.qty, old_code: r.oldCode, note,
+        rm_code: r.rmCode, rm_name: r.rmName, qty: r.qty, old_code: r.oldCode, pd_status: r.pdStatus, note,
       }));
     const skippedUpfront = impRows.length - rows.length;
     if (!rows.length) {
@@ -1591,6 +1611,7 @@
       $("impMsg").className = "msg ok";
       $("impMsg").textContent = `นำเข้าสำเร็จ ${d.imported} แถว`
         + (d.duplicate ? ` (ข้าม ${d.duplicate} แถวที่ซ้ำกับข้อมูลเดิมในระบบ)` : "")
+        + (d.pd_updated ? ` · อัปเดตสถานะ PD ของรายการเดิม ${d.pd_updated} แถว` : "")
         + (d.skipped ? ` (ข้าม ${d.skipped} แถวที่ข้อมูลไม่ครบ)` : "")
         + (skippedUpfront ? ` (ไม่ได้ส่ง ${skippedUpfront} แถวเพราะข้อมูลไม่ครบ)` : "");
       $("impMsg").hidden = false;

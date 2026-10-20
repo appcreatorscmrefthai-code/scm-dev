@@ -44,6 +44,7 @@ create table if not exists public.bomc_items (
 );
 alter table public.bomc_items add column if not exists created_by uuid;
 alter table public.bomc_items add column if not exists updated_by uuid;
+alter table public.bomc_items add column if not exists pd_status text;   -- สถานะ PD (จากไฟล์ Excel ที่นำเข้า เช่น Started)
 alter sequence public.bomc_items_no_seq owned by public.bomc_items.no;
 create index if not exists bomc_items_created_idx on public.bomc_items (created_at);
 
@@ -200,11 +201,20 @@ $$;
 
 -- นำเข้า Excel จากเว็บ (edit1 ขึ้นไป)  ข้ามแถวข้อมูลไม่ครบ และแถวที่ซ้ำกับของเดิมในระบบ
 -- สถานะของงานของแถวที่นำเข้า = "แจ้งแก้ไข" เสมอ
+-- สถานะ PD: แถวใหม่ใช้ค่าจากไฟล์ และอัปเดตสถานะ PD ของรายการเดิมที่มาจาก Excel (เลข PD เดียวกัน) ให้เป็นค่าล่าสุดในไฟล์
+drop function if exists public.bomc_import(jsonb);
 create or replace function public.bomc_import(p_rows jsonb)
-returns json language sql security invoker as $$
-  with src as (
+returns json language plpgsql security definer set search_path = public as $$
+declare
+  v_total int; v_valid int; v_ins int; v_upd int;
+begin
+  if coalesce(public.bomc_role(), '') not in ('edit1', 'edit2', 'admin') then
+    raise exception 'ไม่มีสิทธิ์นำเข้าข้อมูล';
+  end if;
+
+  drop table if exists _imp;
+  create temp table _imp on commit drop as
     select e.ord,
-           nullif(trim(e.j->>'status'), '')    as status,
            nullif(trim(e.j->>'fg_code'), '')   as fg_code,
            nullif(trim(e.j->>'pd_number'), '') as pd_number,
            nullif(trim(e.j->>'fg_model'), '')  as fg_model,
@@ -214,41 +224,51 @@ returns json language sql security invoker as $$
            nullif(trim(e.j->>'old_code'), '')  as old_code,
            nullif(trim(e.j->>'edit_type'), '') as edit_type,
            nullif(trim(e.j->>'use_date'), '')::date as use_date,
+           nullif(trim(e.j->>'pd_status'), '') as pd_status,
            nullif(trim(e.j->>'note'), '')      as note
-    from jsonb_array_elements(p_rows) with ordinality as e(j, ord)
-  ),
-  valid as (
-    select * from src
-    where qty > 0
-      and coalesce(fg_code, pd_number, fg_model) is not null
-      and coalesce(rm_code, rm_name) is not null
-  ),
-  keyed as (
+    from jsonb_array_elements(p_rows) with ordinality as e(j, ord);
+  select count(*) into v_total from _imp;
+
+  delete from _imp
+   where not (qty > 0
+              and coalesce(fg_code, pd_number, fg_model) is not null
+              and coalesce(rm_code, rm_name) is not null)
+      or qty is null;
+  select count(*) into v_valid from _imp;
+
+  -- สถานะ PD ล่าสุดในไฟล์ ของแต่ละเลข PD -> อัปเดตรายการเดิมที่มาจาก Excel
+  update public.bomc_items i
+     set pd_status = f.pd_status, updated_by = auth.uid()
+    from (select distinct on (pd_number) pd_number, pd_status
+            from _imp where pd_number is not null and pd_status is not null
+           order by pd_number, ord desc) f
+   where i.pd_number = f.pd_number and i.source = 'excel'
+     and i.pd_status is distinct from f.pd_status;
+  get diagnostics v_upd = row_count;
+
+  -- เพิ่มเฉพาะแถวที่ยังไม่มีในระบบ (นับจำนวนซ้ำ: ไฟล์มี 2 แถวเหมือนกัน ระบบมี 1 = เพิ่ม 1)
+  with keyed as (
     select v.*, public.bomc_dupkey(fg_code, pd_number, fg_model, rm_code, qty, old_code) as k,
            row_number() over (partition by public.bomc_dupkey(fg_code, pd_number, fg_model, rm_code, qty, old_code)
                               order by ord) as rn
-    from valid v
+    from _imp v
   ),
   existing as (
     select public.bomc_dupkey(fg_code, pd_number, fg_model, rm_code, qty, old_code) as k, count(*) as c
     from public.bomc_items group by 1
-  ),
-  ins as (
-    insert into public.bomc_items (reporter, status, fg_code, pd_number, fg_model, rm_code, rm_name, qty,
-                                   old_code, edit_type, use_date, note, source)
-    select '-', 'แจ้งแก้ไข', fg_code, pd_number, fg_model, rm_code, rm_name, qty,
-           old_code, edit_type, use_date, note, 'excel'
-    from keyed left join existing x using (k)
-    where keyed.rn > coalesce(x.c, 0)
-    order by ord
-    returning 1
   )
-  select json_build_object(
-    'imported',  (select count(*) from ins),
-    'duplicate', (select count(*) from keyed) - (select count(*) from ins),
-    'skipped',   (select count(*) from src) - (select count(*) from valid)
-  )
-$$;
+  insert into public.bomc_items (reporter, status, fg_code, pd_number, fg_model, rm_code, rm_name, qty,
+                                 old_code, edit_type, use_date, pd_status, note, source)
+  select '-', 'แจ้งแก้ไข', fg_code, pd_number, fg_model, rm_code, rm_name, qty,
+         old_code, edit_type, use_date, pd_status, note, 'excel'
+  from keyed left join existing x using (k)
+  where keyed.rn > coalesce(x.c, 0)
+  order by ord;
+  get diagnostics v_ins = row_count;
+
+  return json_build_object('imported', v_ins, 'duplicate', v_valid - v_ins,
+                           'skipped', v_total - v_valid, 'pd_updated', v_upd);
+end $$;
 
 -- แถวที่เคยนำเข้าจาก Excel แต่สถานะว่าง -> "แจ้งแก้ไข"
 update public.bomc_items set status = 'แจ้งแก้ไข'
