@@ -199,6 +199,7 @@ returns json language sql stable as $$
 $$;
 
 -- นำเข้า Excel จากเว็บ (edit1 ขึ้นไป)  ข้ามแถวข้อมูลไม่ครบ และแถวที่ซ้ำกับของเดิมในระบบ
+-- สถานะของงานของแถวที่นำเข้า = "แจ้งแก้ไข" เสมอ
 create or replace function public.bomc_import(p_rows jsonb)
 returns json language sql security invoker as $$
   with src as (
@@ -235,7 +236,7 @@ returns json language sql security invoker as $$
   ins as (
     insert into public.bomc_items (reporter, status, fg_code, pd_number, fg_model, rm_code, rm_name, qty,
                                    old_code, edit_type, use_date, note, source)
-    select '-', status, fg_code, pd_number, fg_model, rm_code, rm_name, qty,
+    select '-', 'แจ้งแก้ไข', fg_code, pd_number, fg_model, rm_code, rm_name, qty,
            old_code, edit_type, use_date, note, 'excel'
     from keyed left join existing x using (k)
     where keyed.rn > coalesce(x.c, 0)
@@ -248,6 +249,10 @@ returns json language sql security invoker as $$
     'skipped',   (select count(*) from src) - (select count(*) from valid)
   )
 $$;
+
+-- แถวที่เคยนำเข้าจาก Excel แต่สถานะว่าง -> "แจ้งแก้ไข"
+update public.bomc_items set status = 'แจ้งแก้ไข'
+ where source = 'excel' and coalesce(trim(status), '') = '';
 
 -- แก้ สถานะของงาน / เอ็นจิเนียร์ผู้รับผิดชอบ (edit2, admin)  ทีละหลายรายการได้
 -- ส่ง null = ไม่เปลี่ยนช่องนั้น  วันที่แก้ไข = เวลาที่กดบันทึก (เวลาไทย)

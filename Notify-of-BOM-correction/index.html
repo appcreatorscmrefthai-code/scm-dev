@@ -83,6 +83,8 @@
   .btn-primary { background: var(--blue); color: #fff; }
   .btn-success { background: var(--green); color: #fff; }
   .btn-danger { background: #fff; color: var(--red); border-color: #f1c4bf !important; }
+  .btn-edit { background: #d92d20; color: #fff; }
+  .btn-edit:hover { background: #b42318; }
   .btn-ghost { background: #fff; color: var(--blue); border-color: var(--line) !important; }
   .btn-done { background: #9aa3ad; color: #fff; }
   .btn-block { width: 100%; }
@@ -1191,6 +1193,7 @@
         + `<div class="row-cards">${shown.map((it) => `
         <div class="row-card${selected.has(it.id) ? " sel" : ""}">
           <div class="top">
+            ${editable ? `<button type="button" class="btn btn-edit btn-small editRow" data-id="${it.id}">แก้ไข</button>` : ""}
             ${editable ? `<input type="checkbox" class="selRow" data-id="${it.id}" ${selected.has(it.id) ? "checked" : ""}>` : ""}
             <div class="grow">${it.fixDate ? `แก้ไข <b>${esc(it.fixDate)}</b>` : "ยังไม่แก้ไข"}${it.engineer ? ` · <b>${esc(it.engineer)}</b>` : ""}</div>
             ${statusBadge(it.status)}
@@ -1200,25 +1203,23 @@
           <div class="sub"><b>${esc(it.pdNumber || "-")}</b> · ${esc(it.fgCode)}${it.fgModel ? " · " + esc(it.fgModel) : ""}</div>
           <div class="sub">แจ้ง ${esc(fmtDateTime(it.date))} · ${esc(it.reporter)} · No. ${esc(it.no)}${it.useDate ? " · ใช้ " + esc(it.useDate) : ""}</div>
           ${it.note ? `<div class="sub">${esc(it.note)}</div>` : ""}
-          ${(it.photo || editable) ? `<div class="act">
-            <span>${it.photo ? `<a href="${esc(it.photo)}" target="_blank" rel="noopener">ดูรูป</a>` : ""}</span>
-            ${editable ? `<button type="button" class="btn btn-ghost btn-small editRow" data-id="${it.id}">แก้ไข</button>` : ""}
-          </div>` : ""}
+          ${it.photo ? `<div class="sub"><a href="${esc(it.photo)}" target="_blank" rel="noopener">ดูรูป</a></div>` : ""}
         </div>`).join("")}</div>${moreHtml}`;
       bindDashRows(shown, editable, ".row-card");
       return;
     }
 
     const head = [
+      editable ? "<th>แก้ไข</th>" : "",
       editable ? `<th><input type="checkbox" id="selAll" ${allOn ? "checked" : ""} title="เลือกทั้งหมดที่แสดง"></th>` : "",
       "<th>วันที่แก้ไข</th><th>สถานะของงาน</th><th>เอ็นจิเนียร์ผู้รับผิดชอบ</th>",
       "<th>วันที่แจ้ง</th><th>No.</th><th>ผู้แจ้ง</th><th>รหัสที่เอาไปใช้</th><th>ชื่อวัตถุดิบ</th><th>จำนวนที่ใช้</th>",
       "<th>ชนิดการแก้ไข</th><th>รหัสเดิม</th><th>รหัสงาน FG</th><th>เลข PD</th><th>ชื่องาน FG</th><th>วันที่นำไปใช้</th>",
       "<th>รูปถ่าย</th><th>หมายเหตุ</th>",
-      editable ? "<th></th>" : "",
     ].join("");
     const body = shown.map((it) => `
       <tr class="${selected.has(it.id) ? "sel" : ""}">
+        ${editable ? `<td><button type="button" class="btn btn-edit btn-small editRow" data-id="${it.id}">แก้ไข</button></td>` : ""}
         ${editable ? `<td><input type="checkbox" class="selRow" data-id="${it.id}" ${selected.has(it.id) ? "checked" : ""}></td>` : ""}
         <td class="nw">${esc(it.fixDate)}</td>
         <td>${statusBadge(it.status)}</td>
@@ -1237,7 +1238,6 @@
         <td class="nw">${esc(it.useDate)}</td>
         <td>${it.photo ? `<a href="${esc(it.photo)}" target="_blank" rel="noopener">ดูรูป</a>` : ""}</td>
         <td class="wrap">${esc(it.note)}</td>
-        ${editable ? `<td><button type="button" class="btn btn-ghost btn-small editRow" data-id="${it.id}">แก้ไข</button></td>` : ""}
       </tr>`).join("");
     $("dashList").innerHTML = `
       <div class="tbl-wrap"><table class="grid"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>${moreHtml}`;
