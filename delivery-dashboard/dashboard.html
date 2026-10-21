@@ -39,6 +39,7 @@ h1 small{font-weight:500;color:var(--muted);font-size:.55em;margin-left:.6em}
 button.nav{font-family:inherit;cursor:pointer}
 .nav{color:var(--text);text-decoration:none;background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:4px 12px;font-size:.8em;white-space:nowrap}
 .nav:hover,.nav:focus-visible{border-color:var(--departed)}
+.clockcol{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 .user{font-size:.75em;color:var(--muted);white-space:nowrap}
 .search{flex:1 1 16em;max-width:34em;min-width:12em;position:relative;font-size:.8em}
 .search input{width:100%;font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:5px 2.2em 5px 10px}
@@ -261,7 +262,7 @@ dialog::backdrop{background:rgba(3,6,14,.72)}
 <div id="gpsWarn" class="banner bad" hidden role="alert"></div>
 <header>
   <h1 id="title">ติดตามการจัดส่ง</h1>
-  <div class="clock" id="clock"></div>
+  <div class="clockcol"><div class="clock" id="clock"></div><span class="user" id="userBox"></span></div>
   <div class="right">
     <a class="nav" href="index.html">ปฏิทิน</a>
     <a class="nav" href="dashboard.html">วันนี้</a>
@@ -272,7 +273,6 @@ dialog::backdrop{background:rgba(3,6,14,.72)}
     <input class="datepick" id="datepick" type="date" aria-label="เลือกวันที่">
     <div class="search"><input id="q" type="search" autocomplete="off" aria-label="ค้นหางาน"
       placeholder="ค้นหา Task Code, LN Num, ทะเบียนรถ, จุดส่ง (หลายค่าคั่นด้วย , )"><button id="qClear" type="button" aria-label="ล้างคำค้นหา" hidden>×</button></div>
-    <span class="user" id="userBox"></span>
   </div>
 </header>
 <div class="summary" id="summary"></div>

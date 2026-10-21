@@ -3,7 +3,8 @@ Option Explicit
 
 ' ============================================================================
 '  Delivery Tracking : ดึงแผนส่งของ (export-tasks) + ใบจองรถ (1Template_TB) ลงชีต Plan
-'  รุ่น 2026.10.21-h  (งานเดิมที่ Client Name ตรงกัน : ตรวจข้อมูลต้นทางที่เปลี่ยน/เพิ่งกรอกครบ แล้วส่งอัปเดตเฉพาะช่องไปแก้ที่เว็บ (ไม่เพิ่มแถวซ้ำ) ; บอตรันได้หลายรอบต่อวัน ;
+'  รุ่น 2026.10.21-i  (ตรวจงานที่เคยส่งขึ้นระบบแต่ไม่มีใน Calendar Plan แล้ว (คีย์ Client Name) : เปิด Notepad + ส่งอีเมล (ชีต Config : mail_to / mail_cc) ;
+'                     h : งานเดิมที่ Client Name ตรงกัน : ตรวจข้อมูลต้นทางที่เปลี่ยน/เพิ่งกรอกครบ แล้วส่งอัปเดตเฉพาะช่องไปแก้ที่เว็บ (ไม่เพิ่มแถวซ้ำ) ; บอตรันได้หลายรอบต่อวัน ;
 '                     g : ดึงเฉพาะงานใหม่จริง งานที่มีอยู่แล้วข้าม ; ชีต Plan ล้างงานที่ส่งแล้วออก เหลือเฉพาะงานรอบนี้ ; Client Name ซ้ำ / ว่าง = คงไว้ท้ายรายการ ไม่รัน Task Code ไม่ส่งขึ้นเว็บ แจ้งใน Log + เปิด Notepad เตือน ;
 '                     จับคู่ใบจองรถโดยตัด Rev.nn ท้าย Client Name เช่น LN26-544 Rev.01 = LN26-544)
 '  รุ่น f : ใบจองรถ 1Template_TB คอลัมน์ เวลานัด 1/2/3 -> Arrival Time 1/2/3 คอลัมน์ H-J ของชีต Plan
@@ -107,6 +108,7 @@ Public Sub DP_ImportCalendar()
     Dim nClean As Long
     Dim flag() As Long, perm() As Long, why() As String, j As Long, nNorm As Long, nDupC As Long, nBlk As Long
     Dim ek As Object, sk As Object, wsB2 As Worksheet, warnTxt As String, sDup As String, sBlk As String
+    Dim emptyRun As Boolean, missTxt As String
     Dim nUpd As Long, nNew As Long, nWrite As Long, updCal As Variant, updCode() As String, outW() As Variant, updMsg As String, nChg As Long, u As Long
 
     ' ---- ตรวจชีต Plan และช่วงวันที่ B1:C1 ----
@@ -140,26 +142,39 @@ Public Sub DP_ImportCalendar()
 
     ' ---- เลือกไฟล์ต้นทางทั้ง 2 ไฟล์ตอนเริ่มต้น ----
     ' (โฟลเดอร์ / ชื่อไฟล์ตามชีต Config : หยิบไฟล์ล่าสุดให้เอง ไม่พบ = เปิดหน้าต่างให้เลือก)
-    fCal = PickSource("export")
-    If Len(fCal) = 0 Then Exit Sub
-    fTb = PickSource("tb")
-    If Len(fTb) = 0 Then Exit Sub
+    ' บอตส่ง "@EMPTY" = Calendar Plan ไม่มีงานเลยในช่วงวันที่นี้ (ไม่มีไฟล์ export) : ข้ามขั้นดึงแผน เหลือขั้นตรวจงานที่เคยส่งแต่ไม่มีใน Calendar Plan แล้ว
+    emptyRun = (mAuto And mAutoExport = "@EMPTY")
+    If Not emptyRun Then
+        fCal = PickSource("export")
+        If Len(fCal) = 0 Then Exit Sub
+        fTb = PickSource("tb")
+        If Len(fTb) = 0 Then Exit Sub
+    End If
 
     On Error GoTo Fail
     Application.ScreenUpdating = False
 
-    ' ---- 1) 2) คัดลอกข้อมูลจากไฟล์ต้นทาง (ค่าอย่างเดียว) ----
-    Application.StatusBar = "กำลังคัดลอกข้อมูลจากไฟล์ export-tasks ..."
-    Set wsCal = CopyFromFile(fCal, SRC_CAL_SHEET, CAL_SHEET)
-    If wsCal Is Nothing Then GoTo Done
-    Application.StatusBar = "กำลังคัดลอกข้อมูลจากไฟล์ใบจองรถ ..."
-    Set wsTb = CopyFromFile(fTb, SRC_TB_SHEET, TB_SHEET)
-    If wsTb Is Nothing Then GoTo Done
+    If emptyRun Then
+        nCal = 0
+    Else
+        ' ---- 1) 2) คัดลอกข้อมูลจากไฟล์ต้นทาง (ค่าอย่างเดียว) ----
+        Application.StatusBar = "กำลังคัดลอกข้อมูลจากไฟล์ export-tasks ..."
+        Set wsCal = CopyFromFile(fCal, SRC_CAL_SHEET, CAL_SHEET)
+        If wsCal Is Nothing Then GoTo Done
+        Application.StatusBar = "กำลังคัดลอกข้อมูลจากไฟล์ใบจองรถ ..."
+        Set wsTb = CopyFromFile(fTb, SRC_TB_SHEET, TB_SHEET)
+        If wsTb Is Nothing Then GoTo Done
 
-    ' ---- 3) 4) 5) กรองและจัดข้อมูล แล้วเขียนกลับชีต Calendar Plan ----
-    Application.StatusBar = "กำลังจัดข้อมูล ..."
-    If Not BuildCalendar(wsCal, d1, d2, cal, nCal) Then GoTo Done
-    WriteCalendar wsCal, cal, nCal
+        ' ---- 3) 4) 5) กรองและจัดข้อมูล แล้วเขียนกลับชีต Calendar Plan ----
+        Application.StatusBar = "กำลังจัดข้อมูล ..."
+        If Not BuildCalendar(wsCal, d1, d2, cal, nCal) Then GoTo Done
+        WriteCalendar wsCal, cal, nCal
+    End If
+
+    ' ---- ตรวจงานที่เคยส่งขึ้น Delivery Tracking แล้ว แต่ไม่มีใน Calendar Plan ของช่วงวันที่นี้อีกแล้ว (ใช้ Client Name เป็นคีย์) : เตือน Notepad + อีเมล ----
+    Application.StatusBar = "กำลังตรวจงานที่ไม่มีใน Calendar Plan แล้ว ..."
+    missTxt = CheckMissing(d1, d2, cal, nCal)
+    If Len(missTxt) > 0 Then Tell missTxt, True
     If nCal = 0 Then
         Application.ScreenUpdating = True
         If mAuto Then mAutoAdded = 0
@@ -839,12 +854,12 @@ Private Sub CollectClientKeys(ByVal ws As Worksheet, ByVal hdr As Long, ByVal d1
 End Sub
 
 ' เขียนข้อความแจ้งเตือนลงไฟล์ข้อความข้างไฟล์ Excel แล้วเปิดด้วย Notepad
-Private Sub ShowWarnFile(ByVal txt As String)
+Private Sub ShowWarnFile(ByVal txt As String, Optional ByVal fname As String = "Delivery_Tracking_Warning.txt")
     Dim p As String, fso As Object, ts As Object
     On Error GoTo Bad
     p = ThisWorkbook.Path
     If Len(p) = 0 Or LCase$(Left$(p, 4)) = "http" Then p = Environ$("TEMP")
-    p = p & "\Delivery_Tracking_Warning.txt"
+    p = p & "\" & fname
     Set fso = CreateObject("Scripting.FileSystemObject")
     Set ts = fso.CreateTextFile(p, True, True)
     ts.Write txt
@@ -852,6 +867,150 @@ Private Sub ShowWarnFile(ByVal txt As String)
     Shell "notepad.exe """ & p & """", vbNormalFocus
 Bad:
 End Sub
+
+' ---------------------------------------------------------------------------
+'  ตรวจงานที่หายจาก Calendar Plan : งานใน Plan_Backup (= งานบน Delivery Tracking ที่ส่งขึ้นไปแล้ว) วันที่อยู่ในช่วง d1-d2
+'  ที่ Client Name (ตัด Rev.nn) ไม่มีในรายการ Calendar Plan รอบนี้ (cal / nCal = งาน outbound ของช่วงวันที่เดียวกัน)
+'  งานที่ถูกยกเลิกแล้ว / Client Name ว่าง / D/N NO ไม่ตรวจ
+'  พบ : เปิด Notepad ค้างไว้ + ส่งอีเมลต่องาน (To/CC ตามชีต Config : mail_to, mail_cc) ; แจ้งซ้ำไม่เกินวันละครั้งต่องาน (บันทึกในชีตซ่อน Missing_Notified)
+'  คืนข้อความสรุป (ว่าง = ไม่พบ)
+' ---------------------------------------------------------------------------
+Private Function CheckMissing(ByVal d1 As Date, ByVal d2 As Date, ByRef cal As Variant, ByVal nCal As Long) As String
+    Dim wsB As Worksheet, hb As Long, lb As Long, a As Variant, r As Long, i As Long, d As Date, k As String, st As String, code As String
+    Dim inCal As Object, lg As Worksheet, lgRow As Object, lgDay As Object, lgMail As Object
+    Dim today As String, nx As Long, isNew As Boolean, needMail As Boolean, mailOn As Boolean, mTo As String, mCc As String
+    Dim nMiss As Long, nShow As Long, nMail As Long, nFail As Long, listTxt As String, fileTxt As String, one As String, err1 As String, subj As String, client As String
+    Dim sch As String, v As Variant
+    On Error GoTo Bad
+    Set wsB = FindSheet(BACKUP_SHEET)
+    If wsB Is Nothing Then Exit Function
+    hb = PlanHeaderRow(wsB)
+    If hb = 0 Then Exit Function
+    lb = lastRow(wsB, hb)
+    If lb <= hb Then Exit Function
+    Set inCal = CreateObject("Scripting.Dictionary")
+    For i = 1 To nCal
+        k = BaseKey(cal(i + 1, 1))
+        If Len(k) > 0 Then inCal(k) = True
+    Next i
+    a = wsB.Range(wsB.Cells(hb + 1, 1), wsB.Cells(lb + 1, PLAN_LASTCOL)).Value
+    today = Format$(Date, "yyyy-mm-dd")
+    mailOn = (StrComp(CfgGet("mail_enabled"), "No", vbTextCompare) <> 0)
+    mTo = CfgGet("mail_to")
+    mCc = CfgGet("mail_cc")
+    Set lg = MissSheet()
+    Set lgRow = CreateObject("Scripting.Dictionary")
+    Set lgDay = CreateObject("Scripting.Dictionary")
+    Set lgMail = CreateObject("Scripting.Dictionary")
+    nx = lg.Cells(lg.rows.Count, 1).End(xlUp).row
+    For r = 2 To nx
+        k = UCase$(Trim$(CStr(lg.Cells(r, 1).Value)))
+        If Len(k) > 0 Then
+            lgRow(k) = r
+            lgDay(k) = CStr(lg.Cells(r, 2).Value)
+            lgMail(k) = CStr(lg.Cells(r, 3).Value)
+        End If
+    Next r
+    nx = nx + 1
+    For r = 1 To UBound(a, 1)
+        code = Trim$(SafeStr(a(r, 1)))
+        If Len(code) > 0 And Len(Trim$(SafeStr(a(r, PLAN_LASTCOL)))) > 0 And ParseYMD(a(r, 2), d) Then
+            If d >= d1 And d <= d2 And Not IsSkipClient(a(r, 4)) Then
+                k = BaseKey(a(r, 4))
+                st = SafeStr(a(r, COL_STATUS))
+                If Len(k) > 0 And InStr(1, st, "cancel", vbTextCompare) = 0 And InStr(1, st, "ยกเลิก") = 0 Then
+                    If Not inCal.Exists(k) Then
+                        nMiss = nMiss + 1
+                        client = Trim$(Replace(Replace(SafeStr(a(r, 4)), vbCr, " "), vbLf, " "))
+                        sch = ""
+                        v = a(r, COL_SCHED)
+                        If VarType(v) = vbDouble Or VarType(v) = vbDate Then sch = Format$(CDate(v), "hh:mm") Else sch = SafeStr(v)
+                        one = "Task Code : " & code & vbCrLf & "Client Name : " & client & vbCrLf & "วันที่ : " & Format$(d, "yyyy-mm-dd") & "   Schedule : " & sch & vbCrLf & _
+                              "Detail : " & Left$(Flatten(SafeStr(a(r, 3)), False), 300) & vbCrLf & "Transport : " & Flatten(SafeStr(a(r, 6)), False) & vbCrLf & _
+                              "บริษัทขนส่ง : " & SafeStr(a(r, 11)) & "   ประเภทรถ : " & SafeStr(a(r, COL_VTYPE)) & "   ทะเบียน : " & SafeStr(a(r, 13)) & "   ผู้ขับ : " & SafeStr(a(r, 14))
+                        listTxt = listTxt & IIf(Len(listTxt) > 0, ", ", "") & code & " (" & client & ")"
+                        k = UCase$(code)
+                        isNew = Not lgRow.Exists(k)
+                        If Not isNew Then isNew = (lgDay(k) <> today)
+                        needMail = mailOn And Len(mTo) > 0 And (isNew Or lgMail(k) <> "Yes")
+                        If isNew Then
+                            nShow = nShow + 1
+                            fileTxt = fileTxt & "-----------------------------------------------" & vbCrLf & one & vbCrLf & vbCrLf
+                        End If
+                        If needMail Then
+                            subj = "ไม่มีงาน " & client & " - " & code & " นี้ใน Calendar Plan แล้ว"
+                            err1 = SendMissMail(mTo, mCc, subj, "ไม่มีงานนี้ใน Calendar Plan แล้ว โปรดตรวจสอบและแจ้ง Admin ลบงานออกจากแผน" & vbCrLf & vbCrLf & one & vbCrLf & vbCrLf & _
+                                    "(ข้อความอัตโนมัติจากบอต Delivery Tracking : เทียบ Client Name ระหว่าง Calendar Plan กับ Delivery Tracking ช่วงวันที่ " & Format$(d1, "yyyy-mm-dd") & IIf(d2 > d1, " ถึง " & Format$(d2, "yyyy-mm-dd"), "") & ")")
+                            If Len(err1) = 0 Then
+                                nMail = nMail + 1
+                                lgMail(k) = "Yes"
+                            Else
+                                nFail = nFail + 1
+                                lgMail(k) = "No"
+                            End If
+                        ElseIf Not lgMail.Exists(k) Then
+                            lgMail(k) = IIf(mailOn, "No", "-")
+                        End If
+                        lgDay(k) = IIf(isNew, today, lgDay(k))
+                        If Not lgRow.Exists(k) Then
+                            lgRow(k) = nx
+                            nx = nx + 1
+                            lgDay(k) = today
+                        End If
+                        lg.Cells(lgRow(k), 1).Value = code
+                        lg.Cells(lgRow(k), 2).Value = lgDay(k)
+                        lg.Cells(lgRow(k), 3).Value = lgMail(k)
+                        lg.Cells(lgRow(k), 4).Value = client
+                    End If
+                End If
+            End If
+        End If
+    Next r
+    If nMiss = 0 Then Exit Function
+    If nShow > 0 Then
+        ShowWarnFile "ไม่มีงานนี้ใน Calendar Plan แล้ว โปรดตรวจสอบและแจ้ง Admin ลบงานออกจากแผน" & vbCrLf & _
+                     "(งานที่เคยส่งขึ้น Delivery Tracking แล้ว แต่ไม่พบ Client Name นี้ใน Calendar Plan ช่วงวันที่ " & Format$(d1, "yyyy-mm-dd") & IIf(d2 > d1, " ถึง " & Format$(d2, "yyyy-mm-dd"), "") & ")" & vbCrLf & _
+                     "ตรวจเมื่อ " & Format$(Now, "yyyy-mm-dd hh:nn") & vbCrLf & vbCrLf & fileTxt, "Delivery_Tracking_MissingJobs.txt"
+    End If
+    CheckMissing = "แจ้งเตือน : งานที่เคยส่งขึ้น Delivery Tracking แต่ไม่มีใน Calendar Plan แล้ว " & CStr(nMiss) & " งาน (แจ้ง Notepad ใหม่ " & CStr(nShow) & ", ส่งอีเมล " & CStr(nMail) & IIf(nFail > 0, ", ส่งอีเมลไม่สำเร็จ " & CStr(nFail) & " : " & err1, "") & "): " & listTxt
+    Exit Function
+Bad:
+    CheckMissing = "ตรวจงานที่ไม่มีใน Calendar Plan ไม่สำเร็จ: " & Err.Description
+End Function
+
+' ชีตซ่อน Missing_Notified : Task Code | วันที่แจ้งล่าสุด | ส่งเมลแล้ว (Yes/No/-) | Client Name
+Private Function MissSheet() As Worksheet
+    Dim ws As Worksheet
+    Set ws = FindSheet("Missing_Notified")
+    If ws Is Nothing Then
+        Set ws = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+        ws.name = "Missing_Notified"
+        ws.Columns("A:D").NumberFormat = "@"
+        ws.Range("A1:D1").Value = Array("Task Code", "แจ้งล่าสุด", "ส่งเมลแล้ว", "Client Name")
+        ws.Range("A1:D1").Font.Bold = True
+        ws.Columns("A:D").ColumnWidth = 22
+        On Error Resume Next
+        ws.Visible = xlSheetHidden
+        On Error GoTo 0
+    End If
+    Set MissSheet = ws
+End Function
+
+' ส่งอีเมลผ่าน Outlook ในเครื่อง (ต้องมี Outlook แบบ Classic ที่ล็อกอินอยู่) คืนค่าว่าง = สำเร็จ / ข้อความผิดพลาด
+Private Function SendMissMail(ByVal toAddr As String, ByVal ccAddr As String, ByVal subj As String, ByVal body As String) As String
+    Dim ol As Object, m As Object
+    On Error GoTo Bad
+    Set ol = CreateObject("Outlook.Application")
+    Set m = ol.CreateItem(0)
+    m.To = toAddr
+    If Len(ccAddr) > 0 Then m.CC = ccAddr
+    m.Subject = subj
+    m.Body = body
+    m.Send
+    Exit Function
+Bad:
+    SendMissMail = Err.Description
+End Function
 
 ' แยกแถวใน cal ที่เป็น "งานเดิม" : Client Name (ตัด Rev.nn) ตรงกับงานที่มี Task Code ในชีต Plan / Plan_Backup ช่วงวันที่เดียวกัน (เอาแถวแรกของแต่ละชื่อ)
 ' แถวเหล่านั้นถูกเอาออกจาก cal ไปไว้ใน upd (รูปแบบเดียวกับ cal) พร้อม Task Code ใน codes(1..n) ; คืนจำนวนที่แยกได้
@@ -1264,6 +1423,9 @@ Private Function EnsureConfig() As Worksheet
         Array("export_prefix", "export-tasks", "ชื่อไฟล์ขึ้นต้นด้วย (ใช้ไฟล์ล่าสุด)"), _
         Array("tb_folder", prof & "\SCMREF (THAILAND) CO., LTD\Sales Domestic - เอกสาร\4.Transport Booking Confirmation(TB)", "โฟลเดอร์ใบจองรถ"), _
         Array("tb_prefix", "1Template_TB", "ชื่อไฟล์ใบจองรถขึ้นต้นด้วย (ใช้ไฟล์ล่าสุด)"), _
+        Array("mail_enabled", "Yes", "Yes = ส่งอีเมลเตือนเมื่อพบงานที่เคยส่งขึ้นระบบแต่ไม่มีใน Calendar Plan แล้ว (ใช้ Outlook ในเครื่อง) ; No = ไม่ส่งเมล (ยังเปิด Notepad เตือน)"), _
+        Array("mail_to", "suppattars@scmrefthai.com", "ผู้รับอีเมลเตือน (To) : หลายคนคั่นด้วย ;"), _
+        Array("mail_cc", "", "ผู้รับสำเนา (CC) : หลายคนคั่นด้วย ; ว่าง = ไม่มี  <<< ใส่อีเมลที่ต้องการ CC ที่ช่องนี้"), _
         Array("ask_file", "No", "Yes = ให้เลือกไฟล์เองทุกครั้ง ; No = หยิบไฟล์ล่าสุดตามโฟลเดอร์ด้านบนให้เอง"))
     For i = LBound(rows) To UBound(rows)
         r = CfgRow(ws, CStr(rows(i)(0)))

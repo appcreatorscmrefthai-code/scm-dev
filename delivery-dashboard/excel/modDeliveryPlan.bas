@@ -3,7 +3,8 @@ Option Explicit
 
 ' ============================================================================
 '  Delivery Tracking : ปุ่มใน Excel สำหรับส่งแผนขึ้นระบบ และดึงข้อมูลกลับลงไฟล์  (ไฟล์ Delivery_Tracking.xlsm)
-'  รุ่น 2026.10.21-y6  (DP_UpdateExisting : บอตตรวจข้อมูลต้นทางที่เปลี่ยนของงานเดิม (ยึด Client Name) แล้วส่งอัปเดตเฉพาะช่องที่เปลี่ยนไปแก้ที่เว็บ ; ชีตซ่อน Src_Snapshot)
+'  รุ่น 2026.10.21-y7  (Plan_Backup : งานใหม่ต่อท้ายตาราง ไม่แทรกกลาง คงลำดับแถวเดิม)
+'  รุ่น y6 : (DP_UpdateExisting : บอตตรวจข้อมูลต้นทางที่เปลี่ยนของงานเดิม (ยึด Client Name) แล้วส่งอัปเดตเฉพาะช่องที่เปลี่ยนไปแก้ที่เว็บ ; ชีตซ่อน Src_Snapshot)
 '  รุ่น y5 : (เพิ่มคอลัมน์ E = Type : domestic / oversea จาก export-tasks ใช้แยกงานในประเทศ/ต่างประเทศ
 '                     ไฟล์เดิมที่ยังไม่มีคอลัมน์ Type ระบบแทรกคอลัมน์ E ให้เอง / DP_AutoRun รับช่วงวันที่ B1-C1)
 '  รุ่น y4 : DP_AutoRun : บอต Python ดึงแผน + ส่งงานใหม่อัตโนมัติ บันทึกผลในชีต Auto_Log
@@ -850,6 +851,7 @@ Private Function WriteBackup(ByVal plan As Collection, ByVal ws As Worksheet, By
     Dim localRows As New Collection, seen As New Collection
     Dim diff As Boolean, zl As String, nUnsent As Long, pick As Long, hasData As Boolean
     Dim nOut As Long, vals() As Variant, o As Long, clearTo As Long, ln As Long
+    Dim oldKind() As Byte, outP() As Long, outO() As Long, pi As Long
 
     mBkTotal = 0: mBkAdded = 0: mBkUpdated = 0: mBkKept = 0: mBkOverwritten = 0: mBkLocal = 0
 
@@ -865,12 +867,16 @@ Private Function WriteBackup(ByVal plan As Collection, ByVal ws As Worksheet, By
     ' ข้อมูลเดิมในชีต (อ่านครั้งเดียวทั้งช่วง)
     lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
     nOld = lastRow - hdr
-    If nOld > 0 Then vOld = ws.Range(ws.Cells(hdr + 1, 1), ws.Cells(lastRow, COL_SYNC)).Value
+    If nOld > 0 Then
+        vOld = ws.Range(ws.Cells(hdr + 1, 1), ws.Cells(lastRow, COL_SYNC)).Value
+        ReDim oldKind(1 To nOld)    ' 1 = งานที่มีบนระบบ (คงตำแหน่งเดิม)  2 = แถวที่ไม่มีบนระบบ (คงตำแหน่งเดิม)
+    End If
     For i = 1 To nOld
         key = UCase$(VText(vOld(i, 1), 1))
         If Len(key) > 0 And Not HasKey(seen, key) And HasKey(srv, key) Then
             seen.Add True, key
             oldOf.Add i, key
+            oldKind(i) = 1
             f = Fields(CStr(plan.Item(CLng(srv.Item(key)))), NCOL + 2)
             diff = False
             For c = 2 To NCOL
@@ -892,7 +898,7 @@ Private Function WriteBackup(ByVal plan As Collection, ByVal ws As Worksheet, By
             For c = 1 To NCOL
                 If Len(VText(vOld(i, c), c)) > 0 Then hasData = True: Exit For
             Next c
-            If hasData Then localRows.Add i
+            If hasData Then localRows.Add i: oldKind(i) = 2
         End If
     Next i
 
@@ -911,45 +917,68 @@ Private Function WriteBackup(ByVal plan As Collection, ByVal ws As Worksheet, By
     End If
     mBkKept = keep.Count
 
-    ' ประกอบข้อมูลที่จะเขียน : งานบนระบบตามลำดับ แล้วต่อด้วยแถวที่ไม่มีบนระบบ
+    ' ประกอบข้อมูลที่จะเขียน : แถวเดิมคงลำดับเดิมทุกแถว (งานที่แก้แล้วอัปเดตค่าในตำแหน่งเดิม)
+    ' งานใหม่จากระบบ (ยังไม่มีในชีต) ต่อท้ายตารางตามลำดับบนระบบ ไม่แทรกกลาง
     nOut = srv.Count + localRows.Count
     mBkTotal = srv.Count
     mBkLocal = localRows.Count
     If nOut > 0 Then
         ReDim vals(1 To nOut, 1 To COL_SYNC)
+        ReDim outP(1 To nOut)
+        ReDim outO(1 To nOut)
         o = 0
+        For i = 1 To nOld
+            If oldKind(i) = 1 Then
+                key = UCase$(VText(vOld(i, 1), 1))
+                o = o + 1
+                outP(o) = CLng(srv.Item(key))
+                outO(o) = i
+            ElseIf oldKind(i) = 2 Then
+                o = o + 1
+                outP(o) = 0
+                outO(o) = i
+            End If
+        Next i
         For i = 1 To plan.Count
             f = Fields(CStr(plan.Item(i)), NCOL + 2)
             key = UCase$(Trim$(CStr(f(0))))
             If Len(key) > 0 Then
-                If CLng(srv.Item(key)) = i Then
+                If CLng(srv.Item(key)) = i And Not HasKey(oldOf, key) Then
                     o = o + 1
-                    If HasKey(keep, key) Then
-                        idx = CLng(keep.Item(key))
-                        For c = 1 To COL_SYNC
-                            vals(o, c) = NZ(vOld(idx, c))
-                        Next c
-                    Else
-                        For c = 1 To NCOL
-                            If c = 1 Then
-                                vals(o, c) = CStr(f(0))
-                            Else
-                                vals(o, c) = ServerCellValue(CStr(f(c - 1)), c)
-                            End If
-                        Next c
-                        vals(o, COL_SYNC) = CStr(f(NCOL))
-                    End If
-                    If Not HasKey(oldOf, key) Then mBkAdded = mBkAdded + 1
+                    outP(o) = i
+                    outO(o) = 0
+                    mBkAdded = mBkAdded + 1
                 End If
             End If
         Next i
-        For i = 1 To localRows.Count
-            o = o + 1
-            idx = CLng(localRows.Item(i))
-            For c = 1 To COL_SYNC
-                vals(o, c) = NZ(vOld(idx, c))
-            Next c
-        Next i
+        nOut = o
+        For o = 1 To nOut
+            If outP(o) > 0 Then
+                pi = outP(o)
+                f = Fields(CStr(plan.Item(pi)), NCOL + 2)
+                key = UCase$(Trim$(CStr(f(0))))
+                If HasKey(keep, key) Then
+                    idx = CLng(keep.Item(key))
+                    For c = 1 To COL_SYNC
+                        vals(o, c) = NZ(vOld(idx, c))
+                    Next c
+                Else
+                    For c = 1 To NCOL
+                        If c = 1 Then
+                            vals(o, c) = CStr(f(0))
+                        Else
+                            vals(o, c) = ServerCellValue(CStr(f(c - 1)), c)
+                        End If
+                    Next c
+                    vals(o, COL_SYNC) = CStr(f(NCOL))
+                End If
+            Else
+                idx = outO(o)
+                For c = 1 To COL_SYNC
+                    vals(o, c) = NZ(vOld(idx, c))
+                Next c
+            End If
+        Next o
     End If
 
     ' ล้างของเดิมทั้งช่วงแล้วเขียนใหม่
