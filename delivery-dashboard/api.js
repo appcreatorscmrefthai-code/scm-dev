@@ -10,6 +10,8 @@ window.SB = (function () {
   // เรียก API หนึ่งครั้ง : สำเร็จคืนข้อมูล, ไม่สำเร็จ throw Error (e.status = รหัส HTTP, e.server = true เมื่อเซิร์ฟเวอร์ปฏิเสธเอง)
   async function call(path, opt) {
     opt = opt || {};
+    // โหมด Admin ของฟอร์มมือถือ (adminmode.js) : ใส่โทเคน Admin ให้ทุกคำขอ (ยกเว้นขั้นตอนเข้าสู่ระบบเอง)
+    if (!opt.token && SB.tokenFn && !/^\/auth\//.test(path)) opt = Object.assign({}, opt, { token: await SB.tokenFn() });
     const headers = Object.assign({ apikey: KEY }, opt.headers || {});
     if (opt.token) headers.Authorization = 'Bearer ' + opt.token;
     let body = opt.body;

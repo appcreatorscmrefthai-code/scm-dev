@@ -10,14 +10,15 @@
   const nextStop = () => task.state.done.findIndex(d => !d);
   const addH = (iso, h) => iso ? new Date(new Date(iso).getTime() + h * 3600e3).toISOString() : '';
 
-  const pagePath = () => 'road.html?task=' + encodeURIComponent(task.taskCode) + '&force=1';
+  const ADM = SB.adminMode ? '&admin=1' : '';
+  const pagePath = () => 'road.html?task=' + encodeURIComponent(task.taskCode) + '&force=1' + ADM;
   async function load(code, quiet) {
     if (!code) return;
     if (!quiet) DF.say('กำลังโหลดข้อมูลงาน…', 'info');
     try {
       const t = (await DF.retry(() => DF.apiGet({ action: 'task', code }), 2)).task;
-      if (SB.taskIntl(t)) { location.replace('road.html?task=' + encodeURIComponent(t.taskCode)); return; }   // งานต่างประเทศ : road.html แจ้งให้ใช้ฟอร์ม WH
-      if (!DF.isGpsCompany(t.company)) { location.replace('road.html?task=' + encodeURIComponent(t.taskCode)); return; }
+      if (SB.taskIntl(t)) { location.replace('road.html?task=' + encodeURIComponent(t.taskCode) + ADM); return; }   // งานต่างประเทศ : road.html แจ้งให้ใช้ฟอร์ม WH
+      if (!DF.isGpsCompany(t.company)) { location.replace('road.html?task=' + encodeURIComponent(t.taskCode) + ADM); return; }
       task = t; show('scanCard', false); show('app', true);
       DF.say(''); $('manualLink').href = pagePath(); render();
     } catch (e) {
@@ -63,9 +64,9 @@
     const opts = [], H24 = 24 * 3600e3, now = Date.now();
     task.stops.forEach((st, i) => {
       const ref = s.done[i] || s.arrive[i];
-      if (ref) opts.push({ v: i + 1, t: `จุดที่ ${i + 1} ${st.name}`, ref, ok: now - new Date(ref).getTime() <= H24 });
+      if (ref) opts.push({ v: i + 1, t: `จุดที่ ${i + 1} ${st.name}`, ref, ok: !!SB.adminMode || now - new Date(ref).getTime() <= H24 });
     });
-    if (task.roundTrip && s.returned) opts.push({ v: 0, t: 'รถกลับถึง SCM', ref: s.returned, ok: now - new Date(s.returned).getTime() <= H24 });
+    if (task.roundTrip && s.returned) opts.push({ v: 0, t: 'รถกลับถึง SCM', ref: s.returned, ok: !!SB.adminMode || now - new Date(s.returned).getTime() <= H24 });
     opts.forEach(o => { o.n = DF.stopPhotos(task, o.v).length; });
     const sel = $('photoTarget'), cur = sel.value;
     sel.innerHTML = opts.map(o => `<option value="${o.v}"${o.ok ? '' : ' disabled'}>${esc(o.t)} · ส่งแล้ว ${o.n}/${DF.MAX_STOP} รูป${o.ok ? '' : ' (ปิดรับรูปแล้ว)'}</option>`).join('');

@@ -188,16 +188,16 @@ $$;
 --     ฟอร์มคนขับทั่วไป / คนขับปทุมฯ (form = driver)          วันงาน + 2 วัน
 --     ฟอร์ม WH / QA / WH ต่างประเทศ (form = pickup, qa, wh_in) วันงาน + 1 วัน
 --   เลยช่วง = "งานนี้จบแล้ว" ไม่ให้เข้าหน้าข้อมูล ; ก่อนช่วง = "ยังไม่ถึงวันงาน"
+-- s23 : QR ทุกอัน (คนขับ / WH / QA / WH ต่างประเทศ) เปิดได้ ก่อนวันงาน 1 วัน ถึง วันงาน + 4 วัน ; Admin เปิดได้ทุกช่วง
 create or replace function public.form_days(p_form text) returns int
-language sql immutable as $$
-  select case when lower(coalesce(p_form, '')) in ('pickup', 'qa', 'wh', 'wh_in', 'wh_out') then 1 else 2 end
-$$;
+language sql immutable as $$ select 4 $$;
 
 -- ใช้กับที่เก็บรูป (ไม่รู้ว่าเป็นฟอร์มไหน) : ช่วงกว้างสุด ก่อนวันงาน 1 วัน ถึง วันงาน + 2 วัน (ส่งข้อมูลจริงตรวจตามฟอร์มใน task_check)
 drop function if exists public.form_window_ok(date);
-create or replace function public.form_window_ok(p_date date, p_days int default 2) returns boolean
+drop function if exists public.form_window_ok(date, int);
+create or replace function public.form_window_ok(p_date date, p_days int default 4) returns boolean
 language sql stable as $$
-  select (now() at time zone 'Asia/Bangkok')::date between p_date - 1 and p_date + p_days
+  select public.is_admin() or (now() at time zone 'Asia/Bangkok')::date between p_date - 1 and p_date + p_days
 $$;
 
 create or replace function public.task_check(p_code text, p_key text, p_form text) returns public.plan
@@ -207,10 +207,10 @@ begin
   select * into t from public.plan where upper(task_code) = upper(btrim(coalesce(p_code, '')));
   if not found then raise exception 'ไม่พบงานนี้ กรุณาตรวจ Task Code หรือสแกน QR ใหม่'; end if;
   if public.is_canceled(t.status) then raise exception 'งานนี้ถูกยกเลิกแล้ว (%)', t.task_code; end if;
-  if v_today > t.date + v_days then
+  if v_today > t.date + v_days and not public.is_admin() then
     raise exception 'งานนี้จบแล้ว (งานวันที่ % ลิงก์นี้ใช้ได้ถึงวันที่ %)', to_char(t.date, 'DD/MM/YYYY'), to_char(t.date + v_days, 'DD/MM/YYYY');
   end if;
-  if v_today < t.date - 1 then
+  if v_today < t.date - 1 and not public.is_admin() then
     raise exception 'ยังไม่ถึงวันงาน (งานวันที่ % เปิดลิงก์ได้ตั้งแต่วันที่ %)', to_char(t.date, 'DD/MM/YYYY'), to_char(t.date - 1, 'DD/MM/YYYY');
   end if;
   return t;
@@ -294,7 +294,7 @@ begin
       raise exception 'กรุณาส่งรูปรถเข้า (หัวข้อ 2) ก่อนส่งรูปส่งงาน';
     end if;
     select max(time) into v_last from public.pickup_log where task_code = t.task_code and source <> 'GPS' and dept = v_dept;
-    if v_last is not null and v_now > v_last + interval '24 hours' then
+    if v_last is not null and v_now > v_last + interval '24 hours' and not public.is_admin() then
       raise exception 'ปิดรับรูปจาก % แล้ว (เกิน 24 ชม. นับจากอัปโหลดครั้งล่าสุด)', v_dept;
     end if;
     v_have := public.dept_photo_count(t.task_code, v_dept);
@@ -321,7 +321,7 @@ begin
         insert into public.road_log (time, task_code, type, plate, note, unload)
           values (v_now, t.task_code, 'checkin', t.plate, left('WH ต่างประเทศ: รถเข้า (ส่งรูปรถเข้าครั้งแรก)' || case when v_note <> '' then ' · ' || v_note else '' end, 2000), coalesce(ph, '{}')) returning id into v_id;
       else
-        if v_now > v_ref + interval '24 hours' then raise exception 'ปิดรับรูปรถเข้าแล้ว (เกิน 24 ชม. นับจากรถเข้า)'; end if;
+        if v_now > v_ref + interval '24 hours' and not public.is_admin() then raise exception 'ปิดรับรูปรถเข้าแล้ว (เกิน 24 ชม. นับจากรถเข้า)'; end if;
         if v_have >= 20 and not v_pend then raise exception 'ส่งรูปรถเข้าครบ 20 รูปแล้ว ส่งเพิ่มไม่ได้'; end if;
         ph := public.photo_list(p->'unload', pre, greatest(0, 20 - v_have), t.key);
         if coalesce(array_length(ph, 1), 0) > 0 then update public.road_log set unload = unload || ph where id = v_id; end if;
@@ -382,7 +382,7 @@ begin
       -- แนบรูปลงงานย้อนหลัง (ฟอร์ม GPS) : จุดที่ v_stop (0 = รูปที่ SCM ตอนกลับถึง) ต้องมีบันทึกถึง/ลงงานแล้ว และยังไม่เกิน 24 ชม.
       v_ref := public.stop_photo_ref(t.task_code, v_stop);
       if v_ref is null then raise exception 'ยังไม่มีบันทึกว่ารถถึงจุดนี้ จึงยังแนบรูปไม่ได้'; end if;
-      if v_now > v_ref + interval '24 hours' then raise exception 'ปิดรับรูปจุดนี้แล้ว (เกิน 24 ชม.)'; end if;
+      if v_now > v_ref + interval '24 hours' and not public.is_admin() then raise exception 'ปิดรับรูปจุดนี้แล้ว (เกิน 24 ชม.)'; end if;
       select id into v_id from public.road_log
         where task_code = t.task_code and ((v_stop = 0 and type = 'return') or (v_stop > 0 and stop = v_stop and type in ('arrive', 'unload')))
         order by (type = 'unload') desc, id desc limit 1;
@@ -423,7 +423,7 @@ begin
     if not found then raise exception 'ไม่พบรายการที่จะแนบรูป'; end if;
     if v_type in ('arrive', 'unload', 'return') then      -- รูปลงงาน : รับได้ถึง 24 ชม. หลังถึง/ลงงานจุดนั้น
       v_ref := public.stop_photo_ref(t.task_code, case when v_type = 'return' then 0 else v_stop end);
-      if v_ref is null or now() > v_ref + interval '24 hours' then raise exception 'ปิดรับรูปจุดนี้แล้ว (เกิน 24 ชม.)'; end if;
+      if v_ref is null or (now() > v_ref + interval '24 hours' and not public.is_admin()) then raise exception 'ปิดรับรูปจุดนี้แล้ว (เกิน 24 ชม.)'; end if;
     end if;
     add := public.photo_list(to_jsonb(cur) || coalesce(p->'road', '[]'::jsonb), pre, 5, t.key);
     update public.road_log set road = coalesce(add[1:5], '{}') where id = v_id;
@@ -604,6 +604,10 @@ begin
     end loop;
     if v_hit then n_rows := n_rows + 1; end if;
   end loop;
+  if n_cells > 0 then      -- s23 : การแก้ไขงานเดิมจาก Excel / บอต ก็นับเป็น "ส่งแผนล่าสุด" (แสดงที่ Dashboard)
+    insert into public.app_flags (key, value, at) values ('last_plan_sync', coalesce(v_who, ''), v_now)
+    on conflict (key) do update set value = excluded.value, at = excluded.at;
+  end if;
   return jsonb_build_object('rows', n_rows, 'cells', n_cells, 'missing', n_miss, 'locked', n_lock);
 end $$;
 

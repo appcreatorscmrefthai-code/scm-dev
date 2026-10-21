@@ -30,7 +30,7 @@ button{font:inherit;color:inherit}
 header{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:flex-start;gap:6px 16px;flex-wrap:wrap;
   padding:clamp(6px,min(1.2vw,1.5vh),22px) clamp(16px,2.2vw,44px);background:linear-gradient(180deg,#1b2742,#141d31);
   border-bottom:1px solid var(--rule)}
-h1{margin:0;flex:1 1 100%;font-size:clamp(18px,min(2.3vw,4.2vh),44px);font-weight:700;letter-spacing:.01em}
+h1{margin:0;flex:1 1 0;min-width:0;font-size:clamp(18px,min(2.3vw,4.2vh),44px);font-weight:700;letter-spacing:.01em}
 h1 small{font-weight:500;color:var(--muted);font-size:.55em;margin-left:.6em}
 .clock{white-space:nowrap;font-size:clamp(18px,min(2.3vw,4.2vh),44px);font-weight:700;font-variant-numeric:tabular-nums}
 .datepick{background:var(--panel2);border:1px solid var(--rule);color:var(--text);border-radius:8px;
@@ -218,6 +218,7 @@ dialog::backdrop{background:rgba(3,6,14,.72)}
 .kv dt{color:var(--muted)}.kv dd{margin:0;overflow-wrap:anywhere}
 .log{border-top:1px solid var(--rule);padding-top:.8em;margin-top:.8em}
 .log h3{margin:0 0 .3em;font-size:1em}
+.admbtn{margin-left:.8em;font-size:.8em;font-weight:500;color:var(--text);text-decoration:none;background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:2px 10px;white-space:nowrap}.admbtn:hover{border-color:var(--departed)}
 .log p{margin:.2em 0;color:#c9d4e8;white-space:pre-wrap}
 .log .t{color:var(--muted);font-size:.9em}
 .thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;margin-top:.5em}
@@ -260,6 +261,7 @@ dialog::backdrop{background:rgba(3,6,14,.72)}
 <div id="gpsWarn" class="banner bad" hidden role="alert"></div>
 <header>
   <h1 id="title">ติดตามการจัดส่ง</h1>
+  <div class="clock" id="clock"></div>
   <div class="right">
     <a class="nav" href="index.html">ปฏิทิน</a>
     <a class="nav" href="dashboard.html">วันนี้</a>
@@ -270,7 +272,6 @@ dialog::backdrop{background:rgba(3,6,14,.72)}
     <input class="datepick" id="datepick" type="date" aria-label="เลือกวันที่">
     <div class="search"><input id="q" type="search" autocomplete="off" aria-label="ค้นหางาน"
       placeholder="ค้นหา Task Code, LN Num, ทะเบียนรถ, จุดส่ง (หลายค่าคั่นด้วย , )"><button id="qClear" type="button" aria-label="ล้างคำค้นหา" hidden>×</button></div>
-    <div class="clock" id="clock"></div>
     <span class="user" id="userBox"></span>
   </div>
 </header>
@@ -758,6 +759,8 @@ async function fillPhotos() {
     $('dlgBody').querySelectorAll('a[data-p]:not([href])').forEach(a => { const u = photoUrl.get(a.dataset.p); if (u) { a.href = u.url; a.firstElementChild.src = u.url; } });
   } catch (e) { }
 }
+// Admin : ปุ่มเปิดฟอร์มมือถือของงานนี้ (ไม่จำกัดอายุ QR) เพื่ออัปโหลดรูป / บันทึกข้อมูลแทน เมื่อ QR หมดอายุ
+const admBtn = (page, t) => Auth.isAdmin() && !DEMO ? ` <a class="admbtn" target="_blank" rel="noopener" href="${page}?task=${encodeURIComponent(t.taskCode)}&admin=1" title="เปิดฟอร์มโหมด Admin (ใช้ได้แม้ QR หมดอายุ)">อัปโหลดรูป + แก้ไขข้อมูล</a>` : '';
 const TYPE = { checkin: 'เช็คอิน', eta: 'เวลาที่คาดว่าจะถึง', road: 'สถานการณ์บนถนน', arrive: 'ถึงหน้างาน', depart: 'รถออกจาก SCM', unload: 'ลงงานเสร็จ', 'return': 'กลับถึง SCM' };
 
 function openDetail(code) {
@@ -796,7 +799,7 @@ function openDetail(code) {
     </dl>`;
   [['WH', 'รูปจาก WH (คลังสินค้า)'], ['QA', 'รูปจาก QA (ประกันคุณภาพ)']].forEach(([d, title]) => {
     const pr = deptRows(t, d), n = pr.reduce((a, r) => a + (r.photos || []).length, 0);
-    h += `<div class="log"><h3>${title}</h3>`;
+    h += `<div class="log"><h3>${title}${admBtn(d === 'QA' ? 'qa.html' : 'pickup.html', t)}</h3>`;
     if (pr.length) {
       const lastP = pr[pr.length - 1], closeAt = new Date(new Date(lastP.time).getTime() + 864e5);
       h += `<div class="t">อัปโหลด ${pr.length} ครั้ง · รูปรวม ${n} · ` + (Date.now() > closeAt ? 'ปิดรับรูปแล้ว' : 'เปิดรับรูปถึง ' + hhmm(closeAt.toISOString()) + ' น.') + `</div>`;
@@ -804,7 +807,7 @@ function openDetail(code) {
     } else h += `<div class="t">ยังไม่มีข้อมูล</div>`;
     h += `</div>`;
   });
-  h += `<div class="log"><h3>ข้อมูลจากผู้จัดส่ง</h3>`;
+  h += `<div class="log"><h3>ข้อมูลจากผู้จัดส่ง${x.intl ? '' : admBtn('road.html', t)}</h3>`;
   if (!(t.logs || []).length) h += `<div class="t">ยังไม่มีข้อมูล</div>`;
   (t.logs || []).slice().reverse().forEach(l => {
     const eta = (l.eta || []).map((v, i) => v ? `จุด ${i + 1} ${v}` : '').filter(Boolean).join(', ');

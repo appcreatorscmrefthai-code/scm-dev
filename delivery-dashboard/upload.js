@@ -49,7 +49,7 @@
     needIn = false;
     if (!wh) return;
     const ck = logOf('checkin'), dp = logOf('depart'), inN = ck ? (ck.unload || []).length : 0;
-    const inClosed = ck && Date.now() > new Date(ck.time).getTime() + 24 * 3600e3;
+    const inClosed = !SB.adminMode && ck && Date.now() > new Date(ck.time).getTime() + 24 * 3600e3;
     needIn = !ck;
     show('inDone', !!ck);
     if (ck) $('inDone').textContent = `✓ รถเข้า ${hhmm(ck.time)} น. (เวลาที่ส่งรูปรถเข้าครั้งแรก)` + (inClosed ? ' · ปิดรับรูปรถเข้าแล้ว (เกิน 24 ชม.)' : '');
@@ -79,7 +79,7 @@
       const last = mine[mine.length - 1];
       $('winInfo').hidden = !last;
       if (last) {
-        const close = new Date(new Date(last.time).getTime() + 24 * 3600e3), closed = Date.now() > close.getTime();
+        const close = new Date(new Date(last.time).getTime() + 24 * 3600e3), closed = !SB.adminMode && Date.now() > close.getTime();
         $('winInfo').textContent = `อัปโหลดรูปส่งงานล่าสุด ${DF.fmt(last.time)} · ` + (closed ? 'ปิดรับรูปแล้ว (เกิน 24 ชม.)' : 'ส่งเพิ่มได้ถึง ' + DF.fmt(close.toISOString()));
         if (closed) { $('sendBtn').disabled = true; DF.say(`ปิดรับรูปจาก ${DEPT} แล้ว (เกิน 24 ชม. นับจากอัปโหลดครั้งล่าสุด)`); return; }
       }

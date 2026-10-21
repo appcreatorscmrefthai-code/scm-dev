@@ -3,7 +3,8 @@ Option Explicit
 
 ' ============================================================================
 '  Delivery Tracking : ดึงแผนส่งของ (export-tasks) + ใบจองรถ (1Template_TB) ลงชีต Plan
-'  รุ่น 2026.10.19-g  (ดึงเฉพาะงานใหม่จริง งานที่มีอยู่แล้วข้าม ; ชีต Plan ล้างงานที่ส่งแล้วออก เหลือเฉพาะงานรอบนี้ ; Client Name ซ้ำ / ว่าง = คงไว้ท้ายรายการ ไม่รัน Task Code ไม่ส่งขึ้นเว็บ แจ้งใน Log + เปิด Notepad เตือน ;
+'  รุ่น 2026.10.21-h  (งานเดิมที่ Client Name ตรงกัน : ตรวจข้อมูลต้นทางที่เปลี่ยน/เพิ่งกรอกครบ แล้วส่งอัปเดตเฉพาะช่องไปแก้ที่เว็บ (ไม่เพิ่มแถวซ้ำ) ; บอตรันได้หลายรอบต่อวัน ;
+'                     g : ดึงเฉพาะงานใหม่จริง งานที่มีอยู่แล้วข้าม ; ชีต Plan ล้างงานที่ส่งแล้วออก เหลือเฉพาะงานรอบนี้ ; Client Name ซ้ำ / ว่าง = คงไว้ท้ายรายการ ไม่รัน Task Code ไม่ส่งขึ้นเว็บ แจ้งใน Log + เปิด Notepad เตือน ;
 '                     จับคู่ใบจองรถโดยตัด Rev.nn ท้าย Client Name เช่น LN26-544 Rev.01 = LN26-544)
 '  รุ่น f : ใบจองรถ 1Template_TB คอลัมน์ เวลานัด 1/2/3 -> Arrival Time 1/2/3 คอลัมน์ H-J ของชีต Plan
 '  รุ่น e : (คอลัมน์ E = Type จาก export-tasks : oversea = งานต่างประเทศ / domestic = ในประเทศ
@@ -106,6 +107,7 @@ Public Sub DP_ImportCalendar()
     Dim nClean As Long
     Dim flag() As Long, perm() As Long, why() As String, j As Long, nNorm As Long, nDupC As Long, nBlk As Long
     Dim ek As Object, sk As Object, wsB2 As Worksheet, warnTxt As String, sDup As String, sBlk As String
+    Dim nUpd As Long, nNew As Long, nWrite As Long, updCal As Variant, updCode() As String, outW() As Variant, updMsg As String, nChg As Long, u As Long
 
     ' ---- ตรวจชีต Plan และช่วงวันที่ B1:C1 ----
     Set wsPlan = FindSheet(PLAN_SHEET)
@@ -169,10 +171,14 @@ Public Sub DP_ImportCalendar()
     nExist = 0
     If True Then
         ' ทุกโหมด : ไม่ถาม ดึงเข้ามาเฉพาะงานใหม่จริง ๆ ที่ยังไม่มีในชีต Plan / Plan_Backup (งานที่มีอยู่แล้วข้าม)
+        ' งานที่มีอยู่แล้ว (Client Name ตรงกับงานที่มี Task Code) : แยกไว้ตรวจว่าข้อมูลเปลี่ยนไหม แล้วส่งอัปเดตให้งานเดิม (ไม่เพิ่มแถวซ้ำ)
+        nUpd = SplitExisting(cal, nCal, wsPlan, hdr, d1, d2, updCal, updCode)
         nSkip = DedupeCal(cal, nCal, wsPlan, hdr, d1, d2, sSkip)
         If nCal > 0 Then nSkip = nSkip + SkipExisting(cal, nCal, wsPlan, hdr, d1, d2, sSkip)
-        mAutoSkip = nSkip
-        If nCal = 0 Then
+        mAutoSkip = nSkip + nUpd
+        nNew = nCal
+        If nUpd > 0 Then AppendRows cal, nCal, updCal, nUpd
+        If nNew = 0 And nUpd = 0 Then
             mAutoAdded = 0
             Tell "ไม่มีงานใหม่ วันที่ " & rangeText & " (มีอยู่แล้ว " & CStr(nSkip) & " งาน)" & IIf(nClean > 0, vbCrLf & "ล้างงานที่ส่งแล้ว (มีใน " & BACKUP_SHEET & " แล้ว) ออกจากชีต " & PLAN_SHEET & " " & CStr(nClean) & " แถว", "")
             GoTo Done
@@ -197,7 +203,9 @@ Public Sub DP_ImportCalendar()
     Set sk = CreateObject("Scripting.Dictionary")      ' key -> เจอในไฟล์แล้ว
     For i = 1 To nCal
         key = BaseKey(cal(i + 1, 1))
-        If Len(key) = 0 Then
+        If i > nNew Then
+            flag(i) = 3                                 ' งานเดิม (อยู่ท้ายสุด) : ไม่เพิ่มแถวใหม่ ใช้เทียบข้อมูลเพื่ออัปเดต
+        ElseIf Len(key) = 0 Then
             flag(i) = 2
         Else
             If sk.Exists(key) Then
@@ -212,7 +220,7 @@ Public Sub DP_ImportCalendar()
     Next i
     ReDim perm(1 To nCal)
     j = 0
-    For c = 0 To 2                                      ' 0 = ปกติ  1 = ซ้ำ  2 = Client Name ว่าง (ปกติก่อน ซ้ำ ว่าง ท้ายสุด)
+    For c = 0 To 3                                      ' 0 = ปกติ  1 = ซ้ำ  2 = Client Name ว่าง  3 = งานเดิมที่ใช้อัปเดต (ปกติก่อน ซ้ำ ว่าง งานเดิมท้ายสุด)
         For i = 1 To nCal
             If flag(i) = c Then
                 j = j + 1
@@ -221,8 +229,9 @@ Public Sub DP_ImportCalendar()
         Next i
         If c = 0 Then nNorm = j
         If c = 1 Then nDupC = j - nNorm
+        If c = 2 Then nBlk = j - nNorm - nDupC
     Next c
-    nBlk = nCal - nNorm - nDupC
+    nWrite = nCal - nUpd
 
     ' ---- เตรียมข้อมูลใบจองรถ (Transport Booking) ----
     tb = wsTb.UsedRange.Value
@@ -336,19 +345,44 @@ Public Sub DP_ImportCalendar()
     Application.StatusBar = "กำลังเช็กเลข Task Code ล่าสุดจากเว็บ ..."
     If Not FillTaskCodes(outP, nNorm, wsPlan, hdr, codeMsg) Then GoTo Done
 
+    ' ---- งานเดิม : ใส่ Task Code เดิม แล้วส่งเฉพาะช่องที่ข้อมูลต้นทางเปลี่ยน (หรือช่องที่ว่างบนเว็บแต่ต้นทางมีข้อมูลแล้ว) ไปแก้ที่เว็บ ----
+    If nUpd > 0 Then
+        For j = nWrite + 1 To nCal
+            u = perm(j) - nNew
+            outP(j, 1) = updCode(u)
+        Next j
+        Application.StatusBar = "กำลังตรวจข้อมูลที่เปลี่ยนของงานเดิม ..."
+        nChg = DP_UpdateExisting(outP, nWrite + 1, nCal, updMsg)
+        If Len(updMsg) > 0 Then Tell updMsg, (nChg < 0)
+    End If
+    If nNorm > 0 Then DP_SnapshotSave outP, 1, nNorm
+
     ' ---- วางต่อท้ายข้อมูลเดิมในชีต Plan ----
+    If nWrite = 0 Then
+        Application.StatusBar = False
+        Application.ScreenUpdating = True
+        If mAuto Then mAutoAdded = 0
+        Tell "ไม่มีงานใหม่ วันที่ " & rangeText & " (งานเดิม " & CStr(nUpd) & " งาน ตรวจข้อมูลแล้ว" & IIf(nChg > 0, " แก้ข้อมูล " & CStr(nChg) & " งาน", " ไม่มีข้อมูลเปลี่ยน") & ")" & IIf(nClean > 0, vbCrLf & "ล้างงานที่ส่งแล้ว (มีใน " & BACKUP_SHEET & " แล้ว) ออกจากชีต " & PLAN_SHEET & " " & CStr(nClean) & " แถว", "")
+        GoTo Done
+    End If
+    ReDim outW(1 To nWrite, 1 To OUT_LAST)
+    For j = 1 To nWrite
+        For c = 1 To OUT_LAST
+            outW(j, c) = outP(j, c)
+        Next c
+    Next j
     startRow = lastRow(wsPlan, hdr) + 1
     With wsPlan
-        .Range(.Cells(startRow, 1), .Cells(startRow + nCal - 1, 1)).NumberFormat = "@"
-        .Range(.Cells(startRow, 2), .Cells(startRow + nCal - 1, 2)).NumberFormat = "yyyy-mm-dd"
-        .Range(.Cells(startRow, COL_TYPE), .Cells(startRow + nCal - 1, COL_TYPE)).NumberFormat = "@"
-        .Range(.Cells(startRow, COL_SCHED), .Cells(startRow + nCal - 1, COL_SCHED + 3)).NumberFormat = "hh:mm"
-        .Range(.Cells(startRow, 13), .Cells(startRow + nCal - 1, 13)).NumberFormat = "@"
-        .Range(.Cells(startRow, 15), .Cells(startRow + nCal - 1, 15)).NumberFormat = "@"
-        .Range(.Cells(startRow, 1), .Cells(startRow + nCal - 1, OUT_LAST)).Value = outP
+        .Range(.Cells(startRow, 1), .Cells(startRow + nWrite - 1, 1)).NumberFormat = "@"
+        .Range(.Cells(startRow, 2), .Cells(startRow + nWrite - 1, 2)).NumberFormat = "yyyy-mm-dd"
+        .Range(.Cells(startRow, COL_TYPE), .Cells(startRow + nWrite - 1, COL_TYPE)).NumberFormat = "@"
+        .Range(.Cells(startRow, COL_SCHED), .Cells(startRow + nWrite - 1, COL_SCHED + 3)).NumberFormat = "hh:mm"
+        .Range(.Cells(startRow, 13), .Cells(startRow + nWrite - 1, 13)).NumberFormat = "@"
+        .Range(.Cells(startRow, 15), .Cells(startRow + nWrite - 1, 15)).NumberFormat = "@"
+        .Range(.Cells(startRow, 1), .Cells(startRow + nWrite - 1, OUT_LAST)).Value = outW
     End With
     ' แถวซ้ำ / Client Name ว่าง : ไม่มี Task Code (ไม่ถูกส่งขึ้นเว็บ) ระบายสีและเขียนเหตุผลไว้ที่คอลัมน์ AA
-    For j = nNorm + 1 To nCal
+    For j = nNorm + 1 To nWrite
         i = perm(j)
         With wsPlan.Range(wsPlan.Cells(startRow + j - 1, 1), wsPlan.Cells(startRow + j - 1, PLAN_LASTCOL))
             .Interior.Color = RGB(255, 235, 156)
@@ -374,9 +408,9 @@ Public Sub DP_ImportCalendar()
     On Error Resume Next
     If Not mAuto Then Application.GoTo wsPlan.Cells(startRow, 1), False
     On Error GoTo 0
-    If mAuto Then mAutoAdded = nCal
+    If mAuto Then mAutoAdded = nWrite
 
-    Tell IIf(Len(warnTxt) > 0, warnTxt & vbCrLf & vbCrLf, "") & "เพิ่มงานลงชีต " & PLAN_SHEET & " " & CStr(nCal) & " แถว (แถว " & CStr(startRow) & "-" & CStr(startRow + nCal - 1) & ")" & IIf(nCal > nNorm, " : ส่งขึ้นระบบได้ " & CStr(nNorm) & " งาน", "") & vbCrLf & _
+    Tell IIf(Len(warnTxt) > 0, warnTxt & vbCrLf & vbCrLf, "") & "เพิ่มงานลงชีต " & PLAN_SHEET & " " & CStr(nWrite) & " แถว (แถว " & CStr(startRow) & "-" & CStr(startRow + nWrite - 1) & ")" & IIf(nWrite > nNorm, " : ส่งขึ้นระบบได้ " & CStr(nNorm) & " งาน", "") & vbCrLf & _
          "วันที่ " & rangeText & " / " & TRANS_TYPE & vbCrLf & codeMsg & _
          IIf(nClean > 0, vbCrLf & "ล้างงานที่ส่งแล้ว (มีใน " & BACKUP_SHEET & " แล้ว) ออกจากชีต " & PLAN_SHEET & " " & CStr(nClean) & " แถว", "") & _
          vbCrLf & "ไฟล์ : " & FileNameOf(fCal) & " + " & FileNameOf(fTb) & _
@@ -817,6 +851,69 @@ Private Sub ShowWarnFile(ByVal txt As String)
     ts.Close
     Shell "notepad.exe """ & p & """", vbNormalFocus
 Bad:
+End Sub
+
+' แยกแถวใน cal ที่เป็น "งานเดิม" : Client Name (ตัด Rev.nn) ตรงกับงานที่มี Task Code ในชีต Plan / Plan_Backup ช่วงวันที่เดียวกัน (เอาแถวแรกของแต่ละชื่อ)
+' แถวเหล่านั้นถูกเอาออกจาก cal ไปไว้ใน upd (รูปแบบเดียวกับ cal) พร้อม Task Code ใน codes(1..n) ; คืนจำนวนที่แยกได้
+Private Function SplitExisting(ByRef cal As Variant, ByRef nCal As Long, ByVal wsPlan As Worksheet, ByVal hdr As Long, ByVal d1 As Date, ByVal d2 As Date, ByRef upd As Variant, ByRef codes() As String) As Long
+    Dim ek As Object, wsB As Worksheet, seen As Object, i As Long, n As Long, nu As Long, c As Long, out() As Variant, k As String, code As String
+    If nCal = 0 Then Exit Function
+    Set ek = CreateObject("Scripting.Dictionary")
+    CollectClientKeys wsPlan, hdr, d1, d2, ek
+    Set wsB = FindSheet(BACKUP_SHEET)
+    If Not wsB Is Nothing Then CollectClientKeys wsB, PlanHeaderRow(wsB), d1, d2, ek
+    Set seen = CreateObject("Scripting.Dictionary")
+    ReDim out(1 To nCal + 1, 1 To CAL_NCOL)
+    ReDim upd(1 To nCal + 1, 1 To CAL_NCOL)
+    ReDim codes(1 To nCal)
+    For c = 1 To CAL_NCOL
+        out(1, c) = cal(1, c)
+        upd(1, c) = cal(1, c)
+    Next c
+    For i = 1 To nCal
+        k = BaseKey(cal(i + 1, 1))
+        code = ""
+        If Len(k) > 0 Then
+            If ek.Exists(k) And Not seen.Exists(k) Then code = CStr(ek(k))
+            If Not seen.Exists(k) Then seen.Add k, True
+        End If
+        If Len(code) > 0 Then
+            nu = nu + 1
+            codes(nu) = code
+            For c = 1 To CAL_NCOL
+                upd(nu + 1, c) = cal(i + 1, c)
+            Next c
+        Else
+            n = n + 1
+            For c = 1 To CAL_NCOL
+                out(n + 1, c) = cal(i + 1, c)
+            Next c
+        End If
+    Next i
+    cal = out
+    nCal = n
+    SplitExisting = nu
+End Function
+
+' ต่อแถวงานเดิม (upd 1..nu) ท้าย cal : nCal = จำนวนแถวรวมใหม่
+Private Sub AppendRows(ByRef cal As Variant, ByRef nCal As Long, ByRef upd As Variant, ByVal nu As Long)
+    Dim out() As Variant, i As Long, c As Long
+    ReDim out(1 To nCal + nu + 1, 1 To CAL_NCOL)
+    For c = 1 To CAL_NCOL
+        out(1, c) = cal(1, c)
+    Next c
+    For i = 1 To nCal
+        For c = 1 To CAL_NCOL
+            out(i + 1, c) = cal(i + 1, c)
+        Next c
+    Next i
+    For i = 1 To nu
+        For c = 1 To CAL_NCOL
+            out(nCal + i + 1, c) = upd(i + 1, c)
+        Next c
+    Next i
+    cal = out
+    nCal = nCal + nu
 End Sub
 
 ' ข้ามงานที่มีอยู่แล้ว : Client Name (ตัด Rev.nn) มีในชีต Plan / Plan_Backup ช่วงวันที่เดียวกันแล้ว  /  Client Name ว่างแต่ วันที่ + Detail เหมือนแถวที่มีอยู่  = ไม่ดึงเข้ามา

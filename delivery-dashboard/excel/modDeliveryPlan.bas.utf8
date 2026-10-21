@@ -3,7 +3,8 @@ Option Explicit
 
 ' ============================================================================
 '  Delivery Tracking : ปุ่มใน Excel สำหรับส่งแผนขึ้นระบบ และดึงข้อมูลกลับลงไฟล์  (ไฟล์ Delivery_Tracking.xlsm)
-'  รุ่น 2026.10.16-y5  (เพิ่มคอลัมน์ E = Type : domestic / oversea จาก export-tasks ใช้แยกงานในประเทศ/ต่างประเทศ
+'  รุ่น 2026.10.21-y6  (DP_UpdateExisting : บอตตรวจข้อมูลต้นทางที่เปลี่ยนของงานเดิม (ยึด Client Name) แล้วส่งอัปเดตเฉพาะช่องที่เปลี่ยนไปแก้ที่เว็บ ; ชีตซ่อน Src_Snapshot)
+'  รุ่น y5 : (เพิ่มคอลัมน์ E = Type : domestic / oversea จาก export-tasks ใช้แยกงานในประเทศ/ต่างประเทศ
 '                     ไฟล์เดิมที่ยังไม่มีคอลัมน์ Type ระบบแทรกคอลัมน์ E ให้เอง / DP_AutoRun รับช่วงวันที่ B1-C1)
 '  รุ่น y4 : DP_AutoRun : บอต Python ดึงแผน + ส่งงานใหม่อัตโนมัติ บันทึกผลในชีต Auto_Log
 '  รุ่น y3 : DP_WebNextSeq ให้ modImportCalendar เติม Task Code จากเลขล่าสุดบนเว็บ / เปลี่ยนชื่อเป็น Delivery Tracking
@@ -64,6 +65,10 @@ Private mOverrideToken As String      ' access token ที่ส่งมาจ
 Private mLastTell As String           ' ข้อความล่าสุดที่ควรแจ้งผู้ใช้ (ใช้รายงานข้อผิดพลาดในโหมดไม่มีหน้าต่าง)
 Public DP_LastBackupResult As String  ' ผลลัพธ์บรรทัดเดียวของ DP_BackupFill / DP_BackupAll
 Public DP_LastAutoResult As String    ' ผลลัพธ์บรรทัดเดียวของ DP_AutoRun
+Public DP_LastUpdRows As Long         ' จำนวนงานเดิมที่ถูกแก้ข้อมูลในรอบนี้ (DP_UpdateExisting)
+Public DP_LastUpdCells As Long        ' จำนวนช่องที่ถูกแก้
+Private Const SNAP_SHEET As String = "Src_Snapshot"   ' ชีตซ่อน : ค่าจากไฟล์ต้นทางครั้งล่าสุดของแต่ละงาน ใช้ตรวจว่าต้นทางเปลี่ยนไหม
+Private Const SNAP_LAST As Long = 25                  ' เทียบคอลัมน์ B-Y (ไม่รวม Task Status)
 Private mSendOk As Boolean             ' DP_SendNew ทำงานจบ (ไม่ผิดพลาด)
 Private mSendCount As Long             ' จำนวนงานที่ DP_SendNew ส่งขึ้นระบบ
 Private Const AUTO_LOG_SHEET As String = "Auto_Log"
@@ -1421,6 +1426,217 @@ Private Function RpcJson(ByVal fn As String, ByVal body As String, ByRef ok As B
 End Function
 
 ' ---------------------------------------------------------------------------
+'  อัปเดตงานเดิมตามข้อมูลต้นทางที่เปลี่ยน (เรียกจาก modImportCalendar ตอนบอตรันซ้ำหลายรอบต่อวัน)
+'    a(n1..n2, 1..26) = แถวรูปแบบชีต Plan ที่สร้างจากไฟล์ export-tasks + ใบจองรถรอบนี้ (คอลัมน์ A = Task Code ของงานเดิม)
+'    กติกา (ต่อช่อง B-Y) : ข้ามช่องที่ต้นทางว่าง (ไม่ลบข้อมูลบนเว็บ)
+'      - เคยบันทึกค่าต้นทางไว้ (Src_Snapshot) : ส่งเมื่อ "ต้นทางเปลี่ยนจากครั้งก่อน" และต่างจากบนเว็บ (ไม่ทับสิ่งที่แก้บนเว็บเอง ถ้าต้นทางไม่ได้เปลี่ยน)
+'      - ยังไม่เคยบันทึก (งานที่ส่งก่อนมีระบบนี้) : เติมเฉพาะช่องที่บนเว็บว่างอยู่
+'    ส่งผ่าน plan_update (บันทึก Edit_Log ช่องทาง "Excel (Macro)") แล้วบันทึกค่าต้นทางลง Src_Snapshot
+'    คืนจำนวนงานที่แก้ (0 = ไม่มีอะไรเปลี่ยน) / -1 = ผิดพลาด ; msg = สรุปผลสำหรับ Log
+' ---------------------------------------------------------------------------
+Public Function DP_UpdateExisting(ByRef a() As Variant, ByVal n1 As Long, ByVal n2 As Long, ByRef msg As String) As Long
+    Dim codes As New Collection, j As Long, c As Long, server As Collection, ok As Boolean, row As Variant
+    Dim ws As Worksheet, snap As Object, rowOf As Object, parts As Variant, code As String, key As String
+    Dim newv As String, srvv As String, oldv As String, have As Boolean, push As Boolean
+    Dim colNames() As String, heads() As String, chg As String, listTxt As String, cellTxt As String, nCellsRow As Long
+    Dim batches As New Collection, body As String, inBatch As Long, resp As String, b As Long
+    Dim nPush As Long, nRows As Long, nCells As Long, nLock As Long, nMiss As Long, nSame As Long, done As New Collection
+    On Error GoTo Fail
+    DP_LastUpdRows = 0
+    DP_LastUpdCells = 0
+    For j = n1 To n2
+        If Len(Trim$(CStr(a(j, 1)))) > 0 Then codes.Add Trim$(CStr(a(j, 1)))
+    Next j
+    If codes.Count = 0 Then Exit Function
+    Set server = FetchPlan(codes, ok)
+    If Not ok Then
+        msg = "ตรวจข้อมูลงานเดิมไม่ได้ (อ่านข้อมูลจากระบบไม่สำเร็จ) จะลองใหม่รอบถัดไป"
+        DP_UpdateExisting = -1
+        Exit Function
+    End If
+    Set ws = SnapSheet()
+    Set snap = SnapLoad(ws, rowOf)
+    colNames = Split(PLAN_FIELDS, ",")
+    heads = Split(PLAN_HEADS, "|")
+    For j = n1 To n2
+        code = Trim$(CStr(a(j, 1)))
+        If Len(code) > 0 Then
+            key = UCase$(code)
+            If Not HasKey(server, key) Then
+                nMiss = nMiss + 1                       ' ยังไม่อยู่บนระบบ (ยังไม่ได้ส่ง) : ไม่ต้องอัปเดต
+            Else
+                If Not HasKey(done, key) Then done.Add code, key
+                row = Fields(CStr(server.Item(key)), NCOL + 2)
+                have = snap.Exists(key)
+                If have Then parts = Split(CStr(snap(key)), SnapSep())
+                chg = ""
+                cellTxt = ""
+                nCellsRow = 0
+                For c = 2 To SNAP_LAST
+                    newv = SnapText(a(j, c), c)
+                    If Len(newv) > 0 Then
+                        srvv = CStr(row(c - 1))
+                        If Differs(c, newv, srvv) Then
+                            If have Then
+                                oldv = ""
+                                If c - 2 <= UBound(parts) Then oldv = CStr(parts(c - 2))
+                                push = Differs(c, newv, oldv)
+                            Else
+                                push = (Len(Norm(srvv)) = 0)
+                            End If
+                            If push Then
+                                chg = chg & ",""" & colNames(c - 1) & """:""" & JsonEsc(newv) & """"
+                                cellTxt = cellTxt & IIf(nCellsRow > 0, ", ", "") & heads(c - 1)
+                                nCellsRow = nCellsRow + 1
+                            End If
+                        End If
+                    End If
+                Next c
+                If nCellsRow > 0 Then
+                    If inBatch > 0 Then body = body & ","
+                    body = body & "{""task_code"":""" & JsonEsc(code) & """" & chg & "}"
+                    inBatch = inBatch + 1
+                    nPush = nPush + 1
+                    If nPush <= 12 Then listTxt = listTxt & vbCrLf & "  " & code & " (" & CStr(a(j, 4)) & ") : " & cellTxt
+                    If inBatch = 50 Then
+                        batches.Add body
+                        body = ""
+                        inBatch = 0
+                    End If
+                Else
+                    nSame = nSame + 1
+                End If
+            End If
+        End If
+    Next j
+    If inBatch > 0 Then batches.Add body
+    For b = 1 To batches.Count
+        resp = Api("POST", "/rest/v1/rpc/plan_update", "{""p_rows"":[" & CStr(batches.Item(b)) & "]}", "", ok)
+        If Not ok Then
+            msg = "ส่งอัปเดตงานเดิมไม่สำเร็จ (เชื่อมต่อระบบไม่ได้) จะลองใหม่รอบถัดไป"
+            DP_UpdateExisting = -1
+            Exit Function
+        End If
+        If mStatus < 200 Or mStatus > 299 Then
+            msg = "ส่งอัปเดตงานเดิมไม่สำเร็จ: " & ErrText(resp) & " (จะลองใหม่รอบถัดไป)"
+            DP_UpdateExisting = -1
+            Exit Function
+        End If
+        If IsNumeric(JsonStr(resp, "rows")) Then nRows = nRows + CLng(JsonStr(resp, "rows"))
+        If IsNumeric(JsonStr(resp, "cells")) Then nCells = nCells + CLng(JsonStr(resp, "cells"))
+        If IsNumeric(JsonStr(resp, "locked")) Then nLock = nLock + CLng(JsonStr(resp, "locked"))
+    Next b
+    ' ส่งสำเร็จ (หรือไม่มีอะไรต้องส่ง) : จำค่าต้นทางของงานเหล่านี้ไว้เทียบรอบหน้า
+    SnapWrite ws, snap, rowOf, a, n1, n2, done
+    DP_LastUpdRows = nRows
+    DP_LastUpdCells = nCells
+    DP_UpdateExisting = nRows
+    msg = "ตรวจงานเดิม " & CStr(codes.Count) & " งาน : " & IIf(nPush > 0, "อัปเดตข้อมูล " & CStr(nRows) & " งาน (" & CStr(nCells) & " ช่อง) บันทึกใน Edit_Log (Excel (Macro))" & listTxt & IIf(nPush > 12, vbCrLf & "  ...", ""), "ข้อมูลไม่เปลี่ยน") & _
+          IIf(nLock > 0, vbCrLf & "ข้าม " & CStr(nLock) & " งานที่ถูกยกเลิกแล้ว (แก้ไม่ได้)", "") & _
+          IIf(nMiss > 0, vbCrLf & "ยังไม่อยู่บนระบบ (ยังไม่ได้ส่ง) " & CStr(nMiss) & " งาน", "")
+    Exit Function
+Fail:
+    msg = "ตรวจ/อัปเดตงานเดิมผิดพลาด: " & Err.Description
+    DP_UpdateExisting = -1
+End Function
+
+' บันทึกค่าต้นทางของงานใหม่ที่เพิ่งดึงเข้ามา (a(n1..n2)) ไว้เทียบในรอบถัดไป
+Public Sub DP_SnapshotSave(ByRef a() As Variant, ByVal n1 As Long, ByVal n2 As Long)
+    Dim ws As Worksheet, snap As Object, rowOf As Object, all As New Collection, j As Long, code As String
+    On Error GoTo Bad
+    For j = n1 To n2
+        code = Trim$(CStr(a(j, 1)))
+        If Len(code) > 0 Then
+            If Not HasKey(all, UCase$(code)) Then all.Add code, UCase$(code)
+        End If
+    Next j
+    If all.Count = 0 Then Exit Sub
+    Set ws = SnapSheet()
+    Set snap = SnapLoad(ws, rowOf)
+    SnapWrite ws, snap, rowOf, a, n1, n2, all
+Bad:
+End Sub
+
+Private Function SnapSep() As String
+    SnapSep = ChrW(&H2502)
+End Function
+
+' ข้อความมาตรฐานของช่อง c ใช้เทียบค่าต้นทางกับค่าบนเว็บ (Type ใช้ตัวพิมพ์เล็กเหมือนที่ระบบเก็บ)
+Private Function SnapText(ByVal v As Variant, ByVal c As Long) As String
+    Dim t As String
+    t = Norm(VText(v, c))
+    If c = COL_TYPE Then t = LCase$(t)
+    SnapText = Left$(t, 500)
+End Function
+
+Private Function SnapSheet() As Worksheet
+    Dim ws As Worksheet
+    Set ws = FindSheet(SNAP_SHEET)
+    If ws Is Nothing Then
+        Set ws = NewSheet(SNAP_SHEET, ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+        ws.Range("A1:C1").Value = Array("Task Code", "บันทึกเมื่อ", "ค่าจากไฟล์ต้นทางครั้งล่าสุด (ระบบใช้ตรวจว่าข้อมูลเปลี่ยนไหม ห้ามแก้ไข)")
+        ws.Columns("A:C").NumberFormat = "@"
+        ws.Columns("A").ColumnWidth = 16
+        ws.Columns("B").ColumnWidth = 18
+        ws.Columns("C").ColumnWidth = 60
+        ws.Range("A1:C1").Font.Bold = True
+        On Error Resume Next
+        ws.Visible = xlSheetHidden
+        On Error GoTo 0
+    End If
+    Set SnapSheet = ws
+End Function
+
+' อ่านค่าที่บันทึกไว้ : Task Code (ตัวพิมพ์ใหญ่) -> ข้อความค่าต้นทาง ; rowOf = แถวที่เก็บ
+Private Function SnapLoad(ByVal ws As Worksheet, ByRef rowOf As Object) As Object
+    Dim d As Object, a As Variant, lr As Long, r As Long, k As String
+    Set d = CreateObject("Scripting.Dictionary")
+    Set rowOf = CreateObject("Scripting.Dictionary")
+    lr = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    If lr >= 2 Then
+        a = ws.Range(ws.Cells(2, 1), ws.Cells(lr + 1, 3)).Value
+        For r = 1 To UBound(a, 1)
+            k = UCase$(Trim$(CStr(a(r, 1))))
+            If Len(k) > 0 Then
+                d(k) = CStr(a(r, 3))
+                rowOf(k) = r + 1
+            End If
+        Next r
+    End If
+    Set SnapLoad = d
+End Function
+
+' เขียนค่าต้นทางของแถว a(n1..n2) ที่ Task Code อยู่ใน only ลงชีต Src_Snapshot (ทับแถวเดิมของงานนั้น / ต่อท้าย) ; เก็บสูงสุด 4000 แถว
+Private Sub SnapWrite(ByVal ws As Worksheet, ByVal snap As Object, ByVal rowOf As Object, ByRef a() As Variant, ByVal n1 As Long, ByVal n2 As Long, ByVal only As Collection)
+    Dim j As Long, c As Long, code As String, key As String, blob As String, r As Long, nx As Long
+    nx = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row + 1
+    If nx < 2 Then nx = 2
+    For j = n1 To n2
+        code = Trim$(CStr(a(j, 1)))
+        If Len(code) > 0 Then
+            key = UCase$(code)
+            If HasKey(only, key) Then
+                blob = ""
+                For c = 2 To SNAP_LAST
+                    blob = blob & IIf(c > 2, SnapSep(), "") & SnapText(a(j, c), c)
+                Next c
+                If rowOf.Exists(key) Then
+                    r = rowOf(key)
+                Else
+                    r = nx
+                    nx = nx + 1
+                    rowOf(key) = r
+                End If
+                ws.Cells(r, 1).Value = code
+                ws.Cells(r, 2).Value = Format$(Now, "yyyy-mm-dd hh:nn")
+                ws.Cells(r, 3).Value = blob
+            End If
+        End If
+    Next j
+    If nx > 4000 Then ws.Rows("2:1000").Delete
+End Sub
+
+' ---------------------------------------------------------------------------
 '  DP_AutoRun : ให้บอต Python (calplan_bot.py) เรียกผ่าน Excel COM  (ไม่มีหน้าต่างใดๆ)
 '    accessToken = โทเคนของบัญชีบอต (สิทธิ์ edit) ที่บอตเข้าสู่ระบบให้ ไม่ถูกบันทึกลงไฟล์
 '    runDate     = วันแรกของงาน "ปปปป-ดด-วว" (ว่าง = วันนี้) -> Plan!B1   endDate = วันสุดท้าย (ว่าง = วันเดียว) -> Plan!C1
@@ -1456,6 +1672,8 @@ Public Function DP_AutoRun(ByVal accessToken As String, Optional ByVal runDate A
         If d2 < d Then d2 = d
     End If
     ScreenOn False
+    DP_LastUpdRows = 0
+    DP_LastUpdCells = 0
     ' 1) งานล่าสุดจากเว็บ (ใช้กันเพิ่มงานซ้ำ แม้ไฟล์รอบก่อนไม่ได้บันทึก)
     bkMsg = RefreshBackupAuto(wsB, hdrB)
     ' 2) ดึงแผน
@@ -1468,11 +1686,12 @@ Public Function DP_AutoRun(ByVal accessToken As String, Optional ByVal runDate A
     mLastTell = ""
     DP_SendNew
     sendMsg = mLastTell
+    If DP_LastUpdRows > 0 And mSendCount = 0 Then bkMsg = bkMsg & " / " & RefreshBackupAuto(wsB, hdrB)
     If Not mSendOk Then
         res = "WARN|ดึงแผนเพิ่ม " & CStr(added) & " แถว แต่ส่งงานขึ้นระบบไม่สำเร็จ: " & sendMsg
         GoTo Done
     End If
-    res = "OK|วันที่ " & IsoDate(d) & IIf(d2 > d, " ถึง " & IsoDate(d2), "") & " | เพิ่ม " & CStr(added) & " แถว | ข้าม (มีแล้ว) " & CStr(skipped) & " | ส่งขึ้นระบบ " & CStr(mSendCount) & " งาน" & _
+    res = "OK|วันที่ " & IsoDate(d) & IIf(d2 > d, " ถึง " & IsoDate(d2), "") & " | เพิ่ม " & CStr(added) & " แถว | ข้าม/ตรวจแล้ว (มีแล้ว) " & CStr(skipped) & " | ส่งขึ้นระบบ " & CStr(mSendCount) & " งาน | อัปเดตงานเดิม " & CStr(DP_LastUpdRows) & " งาน (" & CStr(DP_LastUpdCells) & " ช่อง)" & _
           " || ดึงแผน: " & impMsg & " || ส่งงาน: " & sendMsg
     GoTo Done
 Fail:

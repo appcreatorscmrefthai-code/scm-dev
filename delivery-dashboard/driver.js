@@ -21,7 +21,7 @@
         const k = task.taskCode; task = null; show('app', false); show('scanCard', false);
         DF.say(`งาน ${k} เป็นงานต่างประเทศ (${iInfo.label}) ไม่ต้องใช้ฟอร์มคนขับ : WH บันทึกรถเข้า-รถออกในฟอร์มอัปโหลดรูป WH`, 'info'); return;
       }
-      if (DF.isGpsCompany(task.company) && !DF.param('force')) { location.replace('road-gps.html?task=' + encodeURIComponent(task.taskCode)); return; }   // ผู้ให้บริการที่ใช้ GPS
+      if (DF.isGpsCompany(task.company) && !DF.param('force')) { location.replace('road-gps.html?task=' + encodeURIComponent(task.taskCode) + (SB.adminMode ? '&admin=1' : '')); return; }   // ผู้ให้บริการที่ใช้ GPS
       show('scanCard', false); show('app', true);
       DF.say(''); render(true); DF.warm(task.taskCode);
     } catch (e) {
