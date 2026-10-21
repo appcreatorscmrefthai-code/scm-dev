@@ -3,7 +3,8 @@ Option Explicit
 
 ' ============================================================================
 '  Delivery Tracking : ปุ่มใน Excel สำหรับส่งแผนขึ้นระบบ และดึงข้อมูลกลับลงไฟล์  (ไฟล์ Delivery_Tracking.xlsm)
-'  รุ่น 2026.10.21-y7  (Plan_Backup : งานใหม่ต่อท้ายตาราง ไม่แทรกกลาง คงลำดับแถวเดิม)
+'  รุ่น 2026.10.21-y8  (บอตแก้งานเดิมให้ตรงกับต้นทางทุกช่อง รวมถึงลบข้อความจนว่าง)
+'  รุ่น y7 : (Plan_Backup : งานใหม่ต่อท้ายตาราง ไม่แทรกกลาง คงลำดับแถวเดิม)
 '  รุ่น y6 : (DP_UpdateExisting : บอตตรวจข้อมูลต้นทางที่เปลี่ยนของงานเดิม (ยึด Client Name) แล้วส่งอัปเดตเฉพาะช่องที่เปลี่ยนไปแก้ที่เว็บ ; ชีตซ่อน Src_Snapshot)
 '  รุ่น y5 : (เพิ่มคอลัมน์ E = Type : domestic / oversea จาก export-tasks ใช้แยกงานในประเทศ/ต่างประเทศ
 '                     ไฟล์เดิมที่ยังไม่มีคอลัมน์ Type ระบบแทรกคอลัมน์ E ให้เอง / DP_AutoRun รับช่วงวันที่ B1-C1)
@@ -69,6 +70,7 @@ Public DP_LastAutoResult As String    ' ผลลัพธ์บรรทัดเดียวของ DP_AutoRun
 Public DP_LastUpdRows As Long         ' จำนวนงานเดิมที่ถูกแก้ข้อมูลในรอบนี้ (DP_UpdateExisting)
 Public DP_LastUpdCells As Long        ' จำนวนช่องที่ถูกแก้
 Private Const SNAP_SHEET As String = "Src_Snapshot"   ' ชีตซ่อน : ค่าจากไฟล์ต้นทางครั้งล่าสุดของแต่ละงาน ใช้ตรวจว่าต้นทางเปลี่ยนไหม
+Private Const LOOKUP_FROM As Long = 11                 ' คอลัมน์ K-Y = ข้อมูลจากใบจองรถ
 Private Const SNAP_LAST As Long = 25                  ' เทียบคอลัมน์ B-Y (ไม่รวม Task Status)
 Private mSendOk As Boolean             ' DP_SendNew ทำงานจบ (ไม่ผิดพลาด)
 Private mSendCount As Long             ' จำนวนงานที่ DP_SendNew ส่งขึ้นระบบ
@@ -1457,16 +1459,15 @@ End Function
 ' ---------------------------------------------------------------------------
 '  อัปเดตงานเดิมตามข้อมูลต้นทางที่เปลี่ยน (เรียกจาก modImportCalendar ตอนบอตรันซ้ำหลายรอบต่อวัน)
 '    a(n1..n2, 1..26) = แถวรูปแบบชีต Plan ที่สร้างจากไฟล์ export-tasks + ใบจองรถรอบนี้ (คอลัมน์ A = Task Code ของงานเดิม)
-'    กติกา (ต่อช่อง B-Y) : ข้ามช่องที่ต้นทางว่าง (ไม่ลบข้อมูลบนเว็บ)
-'      - เคยบันทึกค่าต้นทางไว้ (Src_Snapshot) : ส่งเมื่อ "ต้นทางเปลี่ยนจากครั้งก่อน" และต่างจากบนเว็บ (ไม่ทับสิ่งที่แก้บนเว็บเอง ถ้าต้นทางไม่ได้เปลี่ยน)
-'      - ยังไม่เคยบันทึก (งานที่ส่งก่อนมีระบบนี้) : เติมเฉพาะช่องที่บนเว็บว่างอยู่
+'    กติกา (ต่อช่อง B-Y) : ต้นทาง (Calendar Plan / ใบจองรถ) เป็นตัวหลัก : ช่องไหนค่าต่างจากบนเว็บ ส่งค่าต้นทางไปแก้ที่เว็บ รวมถึงกรณีลบข้อความในต้นทางจนว่าง (ล้างช่องบนเว็บ)
+'      ข้อยกเว้นเดียว : ถ้าหาใบจองรถของงานนี้ไม่พบ (ช่อง K-Y ว่างทั้งหมด) ไม่ส่งช่อง K-Y (กันล้างทะเบียน/ผู้ขับ/จุดส่งบนเว็บ เมื่อไฟล์ใบจองรถยังไม่มีงานนี้)
 '    ส่งผ่าน plan_update (บันทึก Edit_Log ช่องทาง "Excel (Macro)") แล้วบันทึกค่าต้นทางลง Src_Snapshot
 '    คืนจำนวนงานที่แก้ (0 = ไม่มีอะไรเปลี่ยน) / -1 = ผิดพลาด ; msg = สรุปผลสำหรับ Log
 ' ---------------------------------------------------------------------------
 Public Function DP_UpdateExisting(ByRef a() As Variant, ByVal n1 As Long, ByVal n2 As Long, ByRef msg As String) As Long
     Dim codes As New Collection, j As Long, c As Long, server As Collection, ok As Boolean, row As Variant
-    Dim ws As Worksheet, snap As Object, rowOf As Object, parts As Variant, code As String, key As String
-    Dim newv As String, srvv As String, oldv As String, have As Boolean, push As Boolean
+    Dim ws As Worksheet, snap As Object, rowOf As Object, code As String, key As String
+    Dim newv As String, srvv As String, tbBlank As Boolean
     Dim colNames() As String, heads() As String, chg As String, listTxt As String, cellTxt As String, nCellsRow As Long
     Dim batches As New Collection, body As String, inBatch As Long, resp As String, b As Long
     Dim nPush As Long, nRows As Long, nCells As Long, nLock As Long, nMiss As Long, nSame As Long, done As New Collection
@@ -1496,28 +1497,21 @@ Public Function DP_UpdateExisting(ByRef a() As Variant, ByVal n1 As Long, ByVal 
             Else
                 If Not HasKey(done, key) Then done.Add code, key
                 row = Fields(CStr(server.Item(key)), NCOL + 2)
-                have = snap.Exists(key)
-                If have Then parts = Split(CStr(snap(key)), SnapSep())
+                tbBlank = True
+                For c = LOOKUP_FROM To SNAP_LAST
+                    If Len(SnapText(a(j, c), c)) > 0 Then tbBlank = False: Exit For
+                Next c
                 chg = ""
                 cellTxt = ""
                 nCellsRow = 0
                 For c = 2 To SNAP_LAST
-                    newv = SnapText(a(j, c), c)
-                    If Len(newv) > 0 Then
+                    If Not (tbBlank And c >= LOOKUP_FROM) Then
+                        newv = SnapText(a(j, c), c)
                         srvv = CStr(row(c - 1))
                         If Differs(c, newv, srvv) Then
-                            If have Then
-                                oldv = ""
-                                If c - 2 <= UBound(parts) Then oldv = CStr(parts(c - 2))
-                                push = Differs(c, newv, oldv)
-                            Else
-                                push = (Len(Norm(srvv)) = 0)
-                            End If
-                            If push Then
-                                chg = chg & ",""" & colNames(c - 1) & """:""" & JsonEsc(newv) & """"
-                                cellTxt = cellTxt & IIf(nCellsRow > 0, ", ", "") & heads(c - 1)
-                                nCellsRow = nCellsRow + 1
-                            End If
+                            chg = chg & ",""" & colNames(c - 1) & """:""" & JsonEsc(newv) & """"
+                            cellTxt = cellTxt & IIf(nCellsRow > 0, ", ", "") & heads(c - 1) & IIf(Len(newv) = 0, " (ล้างค่า)", "")
+                            nCellsRow = nCellsRow + 1
                         End If
                     End If
                 Next c

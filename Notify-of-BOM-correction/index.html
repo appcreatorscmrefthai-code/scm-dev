@@ -219,6 +219,7 @@
   }
   .dash-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
   .dash-top .stats { margin-bottom: 0; }
+  .dash-top .upd { flex: 1; align-self: center; color: #c0392b; font-weight: 700; font-size: 14px; }
   .dash-top #dashExport { white-space: nowrap; }
 
   /* มือถือ: แต่ละแถวเป็นการ์ด */
@@ -329,15 +330,10 @@
     <div class="card" id="headerCard">
       <h2><span class="n">1</span>ข้อมูลงาน</h2>
 
-      <div class="two-col">
-        <div class="field">
-          <label>แจ้งโดย</label>
-          <input id="reporterName" type="text" readonly>
-        </div>
-        <div class="field">
-          <label>สถานะของงาน <span class="req">*</span></label>
-          <select id="taskStatus"><option value="">— เลือกสถานะ —</option></select>
-        </div>
+      <div class="field">
+        <label>แจ้งโดย</label>
+        <input id="reporterName" type="text" readonly>
+        <input id="taskStatus" type="hidden" value="แจ้งแก้ไข">  <!-- สถานะของงานที่แจ้งใหม่ = แจ้งแก้ไข เสมอ -->
       </div>
 
       <div class="field">
@@ -454,6 +450,7 @@
     <div class="dash-head">
     <div class="dash-top">
       <div class="stats" id="dashStats"></div>
+      <div id="dashUpdated" class="upd"></div>
       <button type="button" id="dashExport" class="btn btn-success">Export Excel</button>
     </div>
     <div class="toolbar">
@@ -892,7 +889,6 @@
   }
   function fillAllOptions() {
     fillOptions($("editType"), EDIT_TYPES, "— เลือกชนิดการแก้ไข —");
-    fillOptions($("taskStatus"), STATUSES, "— เลือกสถานะ —");
     fillOptions($("dashStatus"), STATUSES, "สถานะทั้งหมด");
     fillOptions($("nuRole"), Object.entries(ROLES), null);
     $("nuRole").value = "edit1";
@@ -974,7 +970,7 @@
 
   // เริ่มงานใหม่: ล้างทุกอย่าง กลับไปหน้าแรกของฟอร์ม
   function resetTask() {
-    ["fgCode", "pdNumber", "fgModel", "taskStatus"].forEach((id) => { $(id).value = ""; });
+    ["fgCode", "pdNumber", "fgModel"].forEach((id) => { $(id).value = ""; });
     clearStatus($("fgStatus"));
     pendItems = [];
     renderPending();
@@ -1220,8 +1216,11 @@
   const selected = new Set();
   let engineers = []; // ชื่อผู้ใช้ Edit2 / Admin
 
-  async function loadDashboard() {
-    $("dashList").innerHTML = `<div class="msg">กำลังโหลดข้อมูล…</div>`;
+  async function loadDashboard(silent) {
+    silent = silent === true;   // โหลดเงียบ (รีเฟรชอัตโนมัติ): ไม่ล้างตาราง ไม่เด้งกลับขึ้นบน
+    const t0 = performance.now();
+    let keep = null;
+    if (!silent) $("dashList").innerHTML = `<div class="msg">กำลังโหลดข้อมูล…</div>`;
     try {
       const [rows, profs] = await Promise.all([
         fetchAllRows("/rest/v1/bomc_items?select=id,no,created_at,reporter,rm_code,rm_name,qty,edit_type,old_code,fg_code,pd_number,fg_model,use_date,photo_url,note,status,engineer,fix_date,pd_status,unit&order=created_at.desc,id.desc"),
@@ -1240,8 +1239,19 @@
       fillOptions($("dashReporter"), reporters, "แจ้งโดย: ทุกคน");
       for (const id of [...selected]) if (!dashItems.some((it) => it.id === id)) selected.delete(id);
       dashLoaded = true;
+      const w = document.querySelector("#dashList .tbl-wrap");
+      if (silent && w) keep = [w.scrollTop, w.scrollLeft];
+      const winY = window.scrollY;
       renderDashboard();
+      if (silent) {
+        const w2 = document.querySelector("#dashList .tbl-wrap");
+        if (w2 && keep) { w2.scrollTop = keep[0]; w2.scrollLeft = keep[1]; }
+        window.scrollTo(0, winY);
+      }
+      const d = new Date();
+      $("dashUpdated").textContent = `อัปเดตล่าสุด ${pad2(d.getHours())}:${pad2(d.getMinutes())} น. · โหลด ${((performance.now() - t0) / 1000).toFixed(1)} วิ`;
     } catch (err) {
+      if (silent) { $("dashUpdated").textContent = "อัปเดตอัตโนมัติไม่สำเร็จ จะลองใหม่ใน 1 นาที"; return; }
       $("dashList").innerHTML = `<div class="msg err">โหลดข้อมูลไม่ได้: ${esc(err.message)}</div>
         <div class="msg"><button type="button" class="btn btn-ghost" id="dashRetry">ลองใหม่</button></div>`;
       $("dashRetry").addEventListener("click", loadDashboard);
@@ -1556,7 +1566,6 @@
     $("fgCode").value = t.fgCode || "";
     $("pdNumber").value = t.pdNumber || "";
     $("fgModel").value = t.fgModel || "";
-    $("taskStatus").value = t.status || "";
     clearStatus($("fgStatus"));
     pendItems = [];
     renderPending();
@@ -1569,7 +1578,14 @@
   $("dashSearch").addEventListener("input", () => { dashLimit = 200; renderDashboard(); });
   $("dashReporter").addEventListener("change", () => { dashLimit = 200; renderDashboard(); });
   $("dashStatus").addEventListener("change", () => { dashLimit = 200; renderDashboard(); });
-  $("dashRefresh").addEventListener("click", loadDashboard);
+  $("dashRefresh").addEventListener("click", () => loadDashboard());
+  // โหลดข้อมูลหน้าติดตามงานใหม่ทุก 1 นาที (เฉพาะตอนเปิดหน้านี้อยู่ และไม่ได้เปิดหน้าต่างแก้ไข)
+  setInterval(() => {
+    if (document.hidden || !dashLoaded) return;
+    if (!$("view-dashboard").classList.contains("active")) return;
+    if (!$("editModal").hidden) return;
+    loadDashboard(true);
+  }, 60 * 1000);
   $("dashMode").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
     dashMode = b.dataset.mode;
     $("dashMode").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
