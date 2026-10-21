@@ -44,6 +44,7 @@ create table if not exists public.bomc_items (
 );
 alter table public.bomc_items add column if not exists created_by uuid;
 alter table public.bomc_items add column if not exists updated_by uuid;
+alter table public.bomc_items add column if not exists unit text;        -- หน่วย (จากการสแกน หรือกรอกเอง)
 alter table public.bomc_items add column if not exists pd_status text;   -- สถานะ PD (จากไฟล์ Excel ที่นำเข้า เช่น Started)
 alter sequence public.bomc_items_no_seq owned by public.bomc_items.no;
 create index if not exists bomc_items_created_idx on public.bomc_items (created_at);
@@ -138,7 +139,7 @@ revoke all on sequence public.bomc_items_no_seq from anon;
 grant select on public.bomc_items, public.bomc_pd_number, public.bomc_released_products, public.bomc_profiles
   to authenticated;
 -- แจ้งงาน: กำหนด id / No. / วันที่แจ้ง / เอ็นจิเนียร์ / วันที่แก้ไข เองไม่ได้
-grant insert (reporter, rm_code, rm_name, qty, edit_type, old_code, fg_code, pd_number, fg_model,
+grant insert (reporter, rm_code, rm_name, qty, unit, edit_type, old_code, fg_code, pd_number, fg_model,
               use_date, photo_url, note, status, source) on public.bomc_items to authenticated;
 grant delete on public.bomc_items to authenticated;                         -- ลบได้เฉพาะ admin (ตาม policy)
 grant insert, update on public.bomc_pd_number, public.bomc_released_products to authenticated;  -- เฉพาะ admin

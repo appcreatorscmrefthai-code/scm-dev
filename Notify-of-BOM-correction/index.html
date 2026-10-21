@@ -45,7 +45,10 @@
   .tab.active { background: var(--blue); border-color: var(--blue); color: #fff; }
 
   main { max-width: 760px; margin: 0 auto; padding: 14px; padding-bottom: 60px; }
-  body.wide main, body.wide .topbar, body.wide .tabs { max-width: 1500px; }
+  /* หน้าติดตามงาน / นำเข้า Excel / ผู้ใช้: เต็มความกว้างจอ (ใช้กับ Chrome ซูม 75% ได้เห็นคอลัมน์เยอะสุด) */
+  body.wide main, body.wide .topbar, body.wide .tabs { max-width: none; }
+  @media (min-width: 1100px) { body.wide main, body.wide .topbar, body.wide .tabs { padding-left: 24px; padding-right: 24px; } }
+  body.wide table.grid td.wrap { max-width: 520px; }
   .view { display: none; }
   .view.active { display: block; }
 
@@ -69,15 +72,32 @@
   .scan-row { display: flex; gap: 8px; }
   .scan-row input { flex: 1; min-width: 0; }
 
-  .or-sep { display: flex; align-items: center; gap: 10px; margin: 12px 0; color: var(--muted); font-size: 12px; }
-  .or-sep::before, .or-sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .or-sep { display: flex; align-items: center; gap: 10px; margin: 16px 0; font-size: 15px; font-weight: 700; color: #b45309; }
+  .or-sep::before, .or-sep::after { content: ""; flex: 1; height: 2px; background: #f5c27a; border-radius: 2px; }
+  .or-sep span { background: #fff4e0; border: 1.5px solid #f5a623; border-radius: 999px; padding: 6px 14px; text-align: center; }
 
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
   .stepper { display: flex; align-items: stretch; gap: 8px; }
   .stepper button { width: 42px; border: 1px solid var(--line); border-radius: 8px; background: #fff;
     font-size: 20px; color: var(--blue); line-height: 1; }
-  .stepper input { flex: 1; text-align: center; }
+  .stepper input { flex: 1; min-width: 0; text-align: center; }
+  .qty-row { display: grid; grid-template-columns: 1.7fr 1fr; gap: 10px; align-items: end; }
+  .stepper button { width: 38px; }
+
+  /* รายการวัตถุดิบ: หัวการ์ด + popup เพิ่มรายการ */
+  .card h2.with-act { justify-content: space-between; }
+  .card h2.with-act .ttl { display: flex; align-items: center; gap: 8px; }
+  .pend-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0;
+    border-bottom: 1px solid var(--line); }
+  .pend-item:last-child { border-bottom: 0; }
+  .pend-item .name { font-weight: 600; }
+  .pend-item .sub { color: var(--muted); font-size: 13px; }
+  .pend-item .rm-btn { border: 1px solid var(--line); background: #fff; color: var(--red, #c0392b); border-radius: 8px; padding: 4px 10px; font-size: 13px; }
+  .pend-empty { color: var(--muted); font-size: 14px; text-align: center; padding: 14px 0; }
+  .modal.item-modal { overflow-y: auto; padding-top: 3vh; align-items: flex-start; }
+  .modal.item-modal .card { max-width: 520px; margin-bottom: 24px; }
+  .modal.item-modal h2 { justify-content: space-between; }
 
   button.btn { padding: 10px 16px; border-radius: 8px; border: 1px solid transparent; font-weight: 600; }
   .btn-primary { background: var(--blue); color: #fff; }
@@ -329,7 +349,7 @@
         <div class="status-line" id="fgStatus"></div>
       </div>
 
-      <div class="or-sep">หรือถ้าสแกนไม่ได้ คีย์เองด้านล่าง</div>
+      <div class="or-sep"><span>✍️ หรือถ้าสแกนไม่ได้ กรอกเองด้านล่าง ⬇</span></div>
 
       <div class="two-col">
         <div class="field">
@@ -344,78 +364,87 @@
     </div>
 
     <div class="card" id="itemCard" hidden>
-      <h2><span class="n">2</span>เพิ่มรายการวัตถุดิบ</h2>
-      <form id="itemForm">
-        <div class="field">
-          <label>รหัสที่เอาไปใช้</label>
-          <div class="scan-row">
-            <input id="rmCode" type="text" placeholder="สแกนหรือพิมพ์รหัสวัตถุดิบ" autocomplete="off">
-            <button type="button" class="btn btn-ghost" data-scan="rmCode">สแกน</button>
+      <h2 class="with-act">
+        <span class="ttl"><span class="n">2</span>รายการวัตถุดิบ</span>
+        <button type="button" id="addItemBtn" class="btn btn-primary">+ เพิ่มรายการ</button>
+      </h2>
+
+      <div id="pendList"></div>
+
+      <div id="saveMsg" class="msg" hidden></div>
+      <button type="button" id="saveAllBtn" class="btn btn-success btn-block" style="margin-top:12px;" disabled>บันทึกรายการ</button>
+    </div>
+
+    <!-- popup เพิ่มรายการวัตถุดิบ -->
+    <div class="modal item-modal" id="itemModal" hidden>
+      <div class="card">
+        <h2><span class="ttl" style="display:flex;align-items:center;gap:8px;"><span class="n">+</span>เพิ่มรายการวัตถุดิบ</span>
+          <button type="button" id="itemModalClose" class="btn btn-ghost" style="padding:4px 10px;">ปิด</button></h2>
+        <form id="itemForm">
+          <div class="field">
+            <label>รหัสที่เอาไปใช้</label>
+            <div class="scan-row">
+              <input id="rmCode" type="text" placeholder="สแกนหรือพิมพ์รหัสวัตถุดิบ" autocomplete="off">
+              <button type="button" class="btn btn-ghost" data-scan="rmCode">สแกน</button>
+            </div>
+            <div class="status-line" id="rmStatus"></div>
           </div>
-          <div class="status-line" id="rmStatus"></div>
-        </div>
 
-        <div class="field">
-          <label>ชื่อวัตถุดิบ</label>
-          <input id="rmName" type="text" placeholder="ขึ้นอัตโนมัติเมื่อสแกนได้ หรือคีย์เองถ้าสแกนไม่ได้" autocomplete="off">
-        </div>
-
-        <div class="field">
-          <label>จำนวนที่ใช้ <span class="req">*</span></label>
-          <div class="stepper">
-            <button type="button" id="qtyMinus">−</button>
-            <input id="qty" type="number" min="1" step="1" value="1" required>
-            <button type="button" id="qtyPlus">+</button>
+          <div class="field">
+            <label>ชื่อวัตถุดิบ</label>
+            <input id="rmName" type="text" placeholder="ขึ้นอัตโนมัติเมื่อสแกนได้ หรือกรอกเองถ้าสแกนไม่ได้" autocomplete="off">
           </div>
-        </div>
 
-        <div class="field">
-          <label>ชนิดการแก้ไข <span class="req">*</span></label>
-          <select id="editType" required><option value="">— เลือกชนิดการแก้ไข —</option></select>
-        </div>
-
-        <div class="field">
-          <label>รหัสเดิม (ถ้าทราบ)</label>
-          <div class="scan-row">
-            <input id="oldCode" type="text" placeholder="สแกนหรือพิมพ์รหัสเดิม (ไม่บังคับ)" autocomplete="off">
-            <button type="button" class="btn btn-ghost" data-scan="oldCode">สแกน</button>
+          <div class="qty-row field">
+            <div>
+              <label>จำนวนที่ใช้ต่อ 1 FG <span class="req">*</span></label>
+              <div class="stepper">
+                <button type="button" id="qtyMinus">−</button>
+                <input id="qty" type="number" min="1" step="1" value="1" required>
+                <button type="button" id="qtyPlus">+</button>
+              </div>
+            </div>
+            <div>
+              <label>หน่วย</label>
+              <input id="rmUnit" type="text" placeholder="เช่น ea" autocomplete="off">
+            </div>
           </div>
-        </div>
 
-        <div class="field">
-          <label>วันที่นำไปใช้ <span class="req">*</span></label>
-          <input id="useDate" type="date" required>
-        </div>
-
-        <div class="field">
-          <label>รูปถ่าย</label>
-          <div class="photo-pick">
-            <label class="btn btn-ghost" for="photo">📷 ถ่ายรูป/เลือกรูป</label>
-            <input id="photo" type="file" accept="image/*" capture="environment" hidden>
-            <img id="photoThumb" class="photo-thumb" alt="">
-            <button type="button" id="photoClear" class="btn btn-ghost" hidden>ลบรูป</button>
+          <div class="field">
+            <label>ชนิดการแก้ไข <span class="req">*</span></label>
+            <select id="editType" required><option value="">— เลือกชนิดการแก้ไข —</option></select>
           </div>
-        </div>
 
-        <div class="field">
-          <label>หมายเหตุ</label>
-          <textarea id="note" placeholder="ไม่บังคับ"></textarea>
-        </div>
+          <div class="field">
+            <label>รหัสเดิม (ถ้าทราบ)</label>
+            <div class="scan-row">
+              <input id="oldCode" type="text" placeholder="สแกนหรือพิมพ์รหัสเดิม (ไม่บังคับ)" autocomplete="off">
+              <button type="button" class="btn btn-ghost" data-scan="oldCode">สแกน</button>
+            </div>
+          </div>
 
-        <div id="saveMsg" class="msg" hidden></div>
+          <div class="field">
+            <label>วันที่นำไปใช้ <span class="req">*</span></label>
+            <input id="useDate" type="date" required>
+          </div>
 
-        <button type="submit" id="saveBtn" class="btn btn-success btn-block">บันทึกรายการ</button>
-      </form>
+          <div class="field">
+            <label>รูปถ่าย</label>
+            <div class="photo-pick">
+              <label class="btn btn-ghost" for="photo">📷 ถ่ายรูป/เลือกรูป</label>
+              <input id="photo" type="file" accept="image/*" capture="environment" hidden>
+              <img id="photoThumb" class="photo-thumb" alt="">
+              <button type="button" id="photoClear" class="btn btn-ghost" hidden>ลบรูป</button>
+            </div>
+          </div>
 
-      <div class="session-list" id="sessionList" hidden>
-        <div class="msg" style="padding:0 0 8px;text-align:left;color:var(--muted);font-size:13px;">
-          รายการที่บันทึกแล้วของงานนี้
-        </div>
-        <div id="sessionItems"></div>
-      </div>
+          <div class="field">
+            <label>หมายเหตุ</label>
+            <textarea id="note" placeholder="ไม่บังคับ"></textarea>
+          </div>
 
-      <div class="field" style="margin-top:14px;">
-        <button type="button" id="newTask" class="btn btn-ghost btn-block">เปลี่ยนงาน FG ใหม่</button>
+          <button type="submit" id="addOkBtn" class="btn btn-primary btn-block">เพิ่มเข้ารายการ</button>
+        </form>
       </div>
     </div>
   </section>
@@ -823,7 +852,7 @@
   function switchView(view) {
     document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.view === view));
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + view));
-    document.body.classList.toggle("wide", view === "dashboard" || view === "users");
+    document.body.classList.toggle("wide", view === "dashboard" || view === "users" || view === "import");
     if (view === "dashboard" && !dashLoaded) loadDashboard();
     if (view === "users") loadUsers();
   }
@@ -943,14 +972,17 @@
   $("pdNumber").addEventListener("input", updateItemCardVisibility);
   $("fgModel").addEventListener("input", updateItemCardVisibility);
 
-  $("newTask").addEventListener("click", () => {
+  // เริ่มงานใหม่: ล้างทุกอย่าง กลับไปหน้าแรกของฟอร์ม
+  function resetTask() {
     ["fgCode", "pdNumber", "fgModel", "taskStatus"].forEach((id) => { $(id).value = ""; });
     clearStatus($("fgStatus"));
-    sessionItems = [];
-    renderSession();
+    pendItems = [];
+    renderPending();
     resetItemForm();
+    closeItemModal();
     updateItemCardVisibility();
-  });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   // ---------- แจ้งงาน: ส่วนที่ 2 รายการวัตถุดิบ ----------
   $("rmCode").addEventListener("input", () => {
@@ -963,12 +995,17 @@
     if (!initReady) { setStatus($("rmStatus"), "", "กำลังโหลดข้อมูลสำหรับค้นหา…"); return; }
     const rec = rmMap.get(code.toUpperCase());
     if (!rec) {
-      setStatus($("rmStatus"), "err", "ไม่พบรหัสนี้ — คีย์ชื่อวัตถุดิบเองด้านล่างได้");
+      setStatus($("rmStatus"), "err", "ไม่พบรหัสนี้ — กรอกชื่อวัตถุดิบและหน่วยเองด้านล่างได้");
+      if (unitAuto) { $("rmUnit").value = ""; unitAuto = false; }
     } else {
       $("rmName").value = rec.productName || "";
+      if (rec.unit) { $("rmUnit").value = rec.unit; unitAuto = true; }
       setStatus($("rmStatus"), "ok", `พบ: ${rec.productName}${rec.unit ? " · หน่วย " + rec.unit : ""}`);
     }
   }
+
+  let unitAuto = false;   // หน่วยที่ขึ้นเองจากการสแกน
+  $("rmUnit").addEventListener("input", () => { unitAuto = false; });
 
   $("qtyMinus").addEventListener("click", () => {
     const i = $("qty"); i.value = Math.max(1, (parseInt(i.value, 10) || 1) - 1);
@@ -1044,67 +1081,120 @@
     $("useDate").value = todayStr();
     $("qty").value = 1;
     $("rmName").value = "";
+    $("rmUnit").value = "";
+    unitAuto = false;
     clearStatus($("rmStatus"));
     photoData = null;
     $("photo").value = "";
     $("photoThumb").style.display = "none";
     $("photoClear").hidden = true;
-    $("saveMsg").hidden = true;
   }
 
-  $("itemForm").addEventListener("submit", async (e) => {
+  // ---------- popup เพิ่มรายการ ----------
+  function openItemModal() { $("itemModal").hidden = false; setTimeout(() => $("rmCode").focus(), 200); }
+  function closeItemModal() { $("itemModal").hidden = true; }
+  function showSaveMsg(cls, text) {
+    const m = $("saveMsg"); m.className = "msg " + cls; m.textContent = text; m.hidden = false;
+  }
+  $("addItemBtn").addEventListener("click", () => {
+    if (!$("taskStatus").value) {
+      $("taskStatus").focus();
+      showSaveMsg("err", "เลือก “สถานะของงาน” ในข้อ 1 ก่อน");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    $("saveMsg").hidden = true;
+    openItemModal();
+  });
+  $("itemModalClose").addEventListener("click", closeItemModal);
+
+  // กด “เพิ่มเข้ารายการ” → เก็บไว้ในรายการ (ยังไม่บันทึกลงระบบ) แล้วปิด popup
+  $("itemForm").addEventListener("submit", (e) => {
     e.preventDefault();
-    const status = $("taskStatus").value;
-    if (!status) { $("taskStatus").focus(); return; }
     const rmCode = $("rmCode").value.trim();
     const rmName = $("rmName").value.trim();
     if (!rmCode && !rmName) { $("rmName").focus(); return; }
+    const qty = Number($("qty").value);
+    if (!(qty > 0)) { $("qty").focus(); return; }
+    pendItems.push({
+      rmCode, rmName, qty, unit: $("rmUnit").value.trim(),
+      editType: $("editType").value || "",
+      oldCode: $("oldCode").value.trim(),
+      useDate: $("useDate").value || "",
+      note: $("note").value.trim(),
+      photoData, photoUrl: null,
+    });
+    renderPending();
+    resetItemForm();
+    closeItemModal();
+    $("saveMsg").hidden = true;
+  });
+
+  let pendItems = [];
+  function renderPending() {
+    const box = $("pendList");
+    box.innerHTML = pendItems.length ? pendItems.map((it, i) => `
+      <div class="pend-item">
+        <div><div class="name">${esc(it.rmName || it.rmCode)}</div>
+          <div class="sub">${esc(it.rmCode)} · × ${esc(it.qty)}${it.unit ? " " + esc(it.unit) : ""}${it.photoData ? " · 📷" : ""}</div></div>
+        <div>${editBadge(it.editType)} <button type="button" class="rm-btn" data-i="${i}">ลบ</button></div>
+      </div>`).join("") : `<div class="pend-empty">ยังไม่มีรายการ — กด “+ เพิ่มรายการ”</div>`;
+    $("saveAllBtn").disabled = !pendItems.length;
+    $("saveAllBtn").textContent = pendItems.length ? `บันทึกรายการ (${pendItems.length})` : "บันทึกรายการ";
+  }
+  $("pendList").addEventListener("click", (e) => {
+    const b = e.target.closest(".rm-btn"); if (!b) return;
+    pendItems.splice(Number(b.dataset.i), 1);
+    renderPending();
+  });
+  renderPending();
+
+  function toast(text) {
+    let t = $("toast");
+    if (!t) {
+      t = document.createElement("div"); t.id = "toast";
+      t.style.cssText = "position:fixed;left:50%;top:80px;transform:translateX(-50%);background:#1f8a4c;color:#fff;padding:12px 20px;border-radius:10px;font-weight:700;z-index:70;box-shadow:0 4px 14px rgba(0,0,0,.25);";
+      document.body.appendChild(t);
+    }
+    t.textContent = text; t.hidden = false;
+    clearTimeout(toast._t); toast._t = setTimeout(() => { t.hidden = true; }, 3000);
+  }
+
+  // บันทึกทั้งหมด → ลงระบบ แล้วกลับไปหน้าแรกเริ่มงานใหม่
+  $("saveAllBtn").addEventListener("click", async () => {
+    const status = $("taskStatus").value;
+    if (!status) { $("taskStatus").focus(); showSaveMsg("err", "เลือก “สถานะของงาน” ในข้อ 1 ก่อน"); return; }
+    if (!pendItems.length) return;
     const fgCode = $("fgCode").value.trim();
     const pdNumber = $("pdNumber").value.trim();
     const fgModel = $("fgModel").value.trim();
-    const qty = Number($("qty").value);
-    if (!(qty > 0)) { $("qty").focus(); return; }
 
-    const row = {
-      reporter: me.name || "-", status, source: "web",
-      fg_code: fgCode || null, pd_number: pdNumber || null, fg_model: fgModel || null,
-      rm_code: rmCode || null, rm_name: rmName || null, qty,
-      edit_type: $("editType").value || null,
-      old_code: $("oldCode").value.trim() || null,
-      use_date: $("useDate").value || null,
-      note: $("note").value.trim() || null,
-      photo_url: null,
-    };
-
-    const btn = $("saveBtn"), msg = $("saveMsg");
+    const btn = $("saveAllBtn");
     btn.disabled = true; btn.textContent = "กำลังบันทึก…";
-    msg.hidden = true;
+    $("saveMsg").hidden = true;
     try {
-      if (photoData) row.photo_url = await uploadPhoto(photoData, fgCode || pdNumber || fgModel || "misc", rmCode || rmName);
-      await sb("/rest/v1/bomc_items", { method: "POST", body: row, headers: { Prefer: "return=minimal" } });
+      for (const it of pendItems) {
+        if (it.photoData && !it.photoUrl) {
+          it.photoUrl = await uploadPhoto(it.photoData, fgCode || pdNumber || fgModel || "misc", it.rmCode || it.rmName);
+        }
+      }
+      const rows = pendItems.map((it) => ({
+        reporter: me.name || "-", status, source: "web",
+        fg_code: fgCode || null, pd_number: pdNumber || null, fg_model: fgModel || null,
+        rm_code: it.rmCode || null, rm_name: it.rmName || null, qty: it.qty, unit: it.unit || null,
+        edit_type: it.editType || null, old_code: it.oldCode || null,
+        use_date: it.useDate || null, note: it.note || null, photo_url: it.photoUrl || null,
+      }));
+      await sb("/rest/v1/bomc_items", { method: "POST", body: rows, headers: { Prefer: "return=minimal" } });
       dashLoaded = false;
-      sessionItems.unshift({ rm: rmCode, name: rmName || rmCode, qty: row.qty, editType: row.edit_type || "" });
-      renderSession();
-      resetItemForm();
-      msg.className = "msg ok"; msg.textContent = "บันทึกรายการแล้ว"; msg.hidden = false;
-      setTimeout(() => { msg.hidden = true; }, 2500);
+      const n = rows.length;
+      resetTask();
+      toast(`บันทึกแล้ว ${n} รายการ`);
     } catch (err) {
-      msg.className = "msg err"; msg.textContent = err.message; msg.hidden = false;
+      showSaveMsg("err", err.message);
+      renderPending();
     }
-    btn.disabled = false; btn.textContent = "บันทึกรายการ";
   });
-
-  let sessionItems = [];
-  function renderSession() {
-    const wrap = $("sessionList"), box = $("sessionItems");
-    if (!sessionItems.length) { wrap.hidden = true; return; }
-    wrap.hidden = false;
-    box.innerHTML = sessionItems.map((it) => `
-      <div class="session-item">
-        <div><div class="name">${esc(it.name)}</div><div class="sub">${esc(it.rm)}</div></div>
-        <div>${editBadge(it.editType)} <span class="sub">× ${esc(it.qty)}</span></div>
-      </div>`).join("");
-  }
 
   function editBadge(type) {
     if (!type) return "";
@@ -1134,13 +1224,13 @@
     $("dashList").innerHTML = `<div class="msg">กำลังโหลดข้อมูล…</div>`;
     try {
       const [rows, profs] = await Promise.all([
-        fetchAllRows("/rest/v1/bomc_items?select=id,no,created_at,reporter,rm_code,rm_name,qty,edit_type,old_code,fg_code,pd_number,fg_model,use_date,photo_url,note,status,engineer,fix_date,pd_status&order=created_at.desc,id.desc"),
+        fetchAllRows("/rest/v1/bomc_items?select=id,no,created_at,reporter,rm_code,rm_name,qty,edit_type,old_code,fg_code,pd_number,fg_model,use_date,photo_url,note,status,engineer,fix_date,pd_status,unit&order=created_at.desc,id.desc"),
         can.edit() ? sb("/rest/v1/bomc_profiles?select=name,role&active=is.true&role=in.(edit2,admin)&order=name") : Promise.resolve([]),
       ]);
       engineers = [...new Set((profs || []).map((p) => (p.name || "").trim()).filter(Boolean))];
       dashItems = rows.map((r) => ({
         id: r.id, date: r.created_at, no: r.no ?? "", reporter: r.reporter || "",
-        rmCode: r.rm_code || "", rmName: r.rm_name || "", qty: r.qty ?? "",
+        rmCode: r.rm_code || "", rmName: r.rm_name || "", qty: r.qty ?? "", unit: r.unit || "",
         editType: r.edit_type || "", oldCode: r.old_code || "",
         fgCode: r.fg_code || "", pdNumber: r.pd_number || "", fgModel: r.fg_model || "",
         useDate: fmtDate(r.use_date), useDateRaw: r.use_date || "", photo: r.photo_url || "", note: r.note || "",
@@ -1210,7 +1300,7 @@
             <div class="grow">${it.fixDate ? `แก้ไข <b>${esc(it.fixDate)}</b>` : "ยังไม่แก้ไข"}${it.engineer ? ` โดย <b>${esc(it.engineer)}</b>` : ""}</div>
             ${statusBadge(it.status)}
           </div>
-          <div class="rm"><span>${esc(it.rmName || it.rmCode)}</span><span class="q">× ${esc(it.qty)}</span></div>
+          <div class="rm"><span>${esc(it.rmName || it.rmCode)}</span><span class="q">× ${esc(it.qty)}${it.unit ? " " + esc(it.unit) : ""}</span></div>
           <div class="sub">${esc(it.rmCode)}${it.oldCode ? " · รหัสเดิม " + esc(it.oldCode) : ""} ${editBadge(it.editType)}</div>
           <div class="sub"><b>${esc(it.pdNumber || "-")}</b>${it.pdStatus ? " " + pdStatusBadge(it.pdStatus) : ""} · ${esc(it.fgCode)}${it.fgModel ? " · " + esc(it.fgModel) : ""}</div>
           <div class="sub">แจ้ง ${esc(fmtDateTime(it.date))} โดย ${esc(it.reporter)} · No. ${esc(it.no)}${it.useDate ? " · ใช้ " + esc(it.useDate) : ""}</div>
@@ -1225,7 +1315,7 @@
       editable ? "<th>แก้ไข</th>" : "",
       editable ? `<th><input type="checkbox" id="selAll" ${allOn ? "checked" : ""} title="เลือกทั้งหมดที่แสดง"></th>` : "",
       "<th>วันที่แก้ไข</th><th>สถานะของงาน</th><th>แก้ไข BOM โดย</th>",
-      "<th>วันที่แจ้ง</th><th>No.</th><th>รหัสที่เอาไปใช้</th><th>ชื่อวัตถุดิบ</th><th>จำนวนที่ใช้</th>",
+      "<th>วันที่แจ้ง</th><th>No.</th><th>รหัสที่เอาไปใช้</th><th>ชื่อวัตถุดิบ</th><th>จำนวนที่ใช้</th><th>หน่วย</th>",
       "<th>ชนิดการแก้ไข</th><th>รหัสเดิม</th><th>รหัสงาน FG</th><th>เลข PD</th><th>สถานะ PD</th><th>ชื่องาน FG</th><th>วันที่นำไปใช้</th>",
       "<th>รูปถ่าย</th><th>หมายเหตุ</th><th>แจ้งโดย</th>",
     ].join("");
@@ -1241,6 +1331,7 @@
         <td class="nw">${esc(it.rmCode)}</td>
         <td class="wrap">${esc(it.rmName)}</td>
         <td class="num">${esc(it.qty)}</td>
+        <td class="nw">${esc(it.unit)}</td>
         <td>${editBadge(it.editType)}</td>
         <td class="nw">${esc(it.oldCode)}</td>
         <td class="nw">${esc(it.fgCode)}</td>
@@ -1309,7 +1400,7 @@
     const list = filteredItems(false);
     if (!list.length) { alert("ไม่มีข้อมูลตามตัวกรองที่เลือก"); return; }
     const heads = ["วันที่แก้ไข", "สถานะของงาน", "แก้ไข BOM โดย", "วันที่แจ้ง", "No.",
-      "รหัสที่เอาไปใช้", "ชื่อวัตถุดิบ", "จำนวนที่ใช้", "ชนิดการแก้ไข", "รหัสเดิม (ถ้าทราบ)", "รหัสงาน FG",
+      "รหัสที่เอาไปใช้", "ชื่อวัตถุดิบ", "จำนวนที่ใช้", "หน่วย", "ชนิดการแก้ไข", "รหัสเดิม (ถ้าทราบ)", "รหัสงาน FG",
       "เลข PD", "สถานะ PD", "ชื่องาน FG", "วันที่นำไปใช้", "รูปถ่าย", "หมายเหตุ", "แจ้งโดย"];
     const DT = "d/m/yyyy h:mm", D = "d/m/yyyy";
     const aoa = [heads];
@@ -1317,18 +1408,18 @@
       const fx = serialFromFixDate(it.fixDate);
       aoa.push([
         fx !== null ? fx : it.fixDate, it.status, it.engineer, serialFromIso(it.date), Number(it.no) || it.no,
-        it.rmCode, it.rmName, Number(it.qty) || it.qty, it.editType, it.oldCode, it.fgCode,
+        it.rmCode, it.rmName, Number(it.qty) || it.qty, it.unit, it.editType, it.oldCode, it.fgCode,
         it.pdNumber, it.pdStatus, it.fgModel, serialFromYmd(it.useDateRaw), it.photo, it.note, it.reporter,
       ]);
     });
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     for (let r = 1; r < aoa.length; r++) {
       const fmt = (c, z) => { const cell = ws[XLSX.utils.encode_cell({ r, c })]; if (cell && cell.t === "n") cell.z = z; };
-      fmt(0, DT); fmt(3, DT); fmt(14, D);
-      const p = ws[XLSX.utils.encode_cell({ r, c: 15 })];
+      fmt(0, DT); fmt(3, DT); fmt(15, D);
+      const p = ws[XLSX.utils.encode_cell({ r, c: 16 })];
       if (p && p.v) { p.l = { Target: String(p.v) }; p.v = "ดูรูป"; }
     }
-    ws["!cols"] = [16, 20, 18, 16, 6, 16, 40, 10, 16, 16, 24, 13, 12, 20, 13, 8, 30, 14].map((w) => ({ wch: w }));
+    ws["!cols"] = [16, 20, 18, 16, 6, 16, 40, 10, 8, 16, 16, 24, 13, 12, 20, 13, 8, 30, 14].map((w) => ({ wch: w }));
     ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: heads.length - 1 } }) };
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "แจ้งแก้ไข BOM by Line");
@@ -1467,13 +1558,12 @@
     $("fgModel").value = t.fgModel || "";
     $("taskStatus").value = t.status || "";
     clearStatus($("fgStatus"));
-    sessionItems = [];
-    renderSession();
+    pendItems = [];
+    renderPending();
     resetItemForm();
     updateItemCardVisibility();
     switchView("report");
     window.scrollTo({ top: 0, behavior: "smooth" });
-    setTimeout(() => $("rmCode").focus(), 300);
   }
 
   $("dashSearch").addEventListener("input", () => { dashLimit = 200; renderDashboard(); });
