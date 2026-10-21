@@ -172,7 +172,10 @@
     return Object.keys(g).sort().map(per => {
       const rs = g[per], diffs = rs.filter(r => r.diff_min != null).map(r => +r.diff_min), late = rs.filter(r => r.diff_min != null && !r.ontime).map(r => +r.diff_min);
       const ok = rs.filter(r => r.ontime).length, n = rs.length;
-      return [per, n, ok, n - ok, n ? r1(100 * ok / n) : null, diffs.length ? r1(diffs.reduce((a, b) => a + b, 0) / diffs.length) : null,
+      // % ทันเวลา = คิดแต่ละงาน (จุดที่ทัน / จุดทั้งหมดของงาน) แล้วเฉลี่ยทุกงานในช่วง
+      const tk = {}; rs.forEach(r => { const t = (tk[r.task_code] ||= { n: 0, ok: 0 }); t.n++; if (r.ontime) t.ok++; });
+      const ts = Object.values(tk), pct = ts.length ? ts.reduce((a, t) => a + 100 * t.ok / t.n, 0) / ts.length : null;
+      return [per, n, ok, n - ok, pct == null ? null : r1(pct), diffs.length ? r1(diffs.reduce((a, b) => a + b, 0) / diffs.length) : null,
         late.length ? r1(late.reduce((a, b) => a + b, 0) / late.length) : null, late.length ? Math.max(...late) : null, rs.filter(r => r.source === 'GPS').length];
     });
   }

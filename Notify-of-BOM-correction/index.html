@@ -119,7 +119,7 @@
   .msg.err { color: var(--red); }
   .msg.ok { color: var(--green); }
 
-  .status-line { font-size: 13px; margin-top: 6px; display: none; }
+  .status-line { font-size: 13px; margin-top: 6px; display: none; white-space: pre-line; }
   .status-line.show { display: block; }
   .status-line.ok { color: var(--green); }
   .status-line.err { color: var(--muted); }
@@ -928,6 +928,23 @@
       showLoading(false);
     }
   }
+  // ไม่พบรหัส → ดึงข้อมูลค้นหาล่าสุดจากระบบอีกครั้ง (เผื่อเพิ่งมีรหัสใหม่ แต่ข้อมูลในเครื่องเป็นของเก่า) ไม่เกินทุก 30 วินาที
+  let lastLookupFetch = 0, lookupTimer = null;
+  function retryLookupLater(kind) {
+    clearTimeout(lookupTimer);
+    lookupTimer = setTimeout(async () => {
+      if (Date.now() - lastLookupFetch < 30000) return;
+      const code = (kind === "fg" ? $("fgCode") : $("rmCode")).value.trim();
+      if (!code) return;
+      lastLookupFetch = Date.now();
+      try {
+        const d = await rpc("bomc_lookup");
+        applyInitData(d); writeInitCache(d);
+        if (kind === "fg") resolveFG($("fgCode").value.trim(), true);
+        else resolveRM($("rmCode").value.trim(), true);
+      } catch (e) { /* ใช้ข้อมูลเดิมต่อ */ }
+    }, 700);
+  }
   function afterInit() {
     if ($("fgCode").value.trim()) resolveFG($("fgCode").value.trim());
     if ($("rmCode").value.trim()) resolveRM($("rmCode").value.trim());
@@ -952,11 +969,12 @@
     resolveFG(code);
   });
 
-  function resolveFG(code) {
+  function resolveFG(code, retried) {
     if (!initReady) { setStatus($("fgStatus"), "", "กำลังโหลดข้อมูลสำหรับค้นหา…"); return; }
     const rec = pdMap.get(code.toUpperCase());
     if (!rec) {
-      setStatus($("fgStatus"), "err", "ไม่พบรหัสนี้ — คีย์เลข PD หรือชื่องาน FG เองด้านล่างได้");
+      setStatus($("fgStatus"), "err", "ไม่พบรหัสนี้ — คีย์เลข PD หรือชื่องาน FG เองด้านล่างได้" + (retried ? "\n(ตรวจกับข้อมูลล่าสุดในระบบแล้ว — ถ้าเพิ่งเพิ่มใน Google Sheet ต้องรอระบบซิงก์ทุก 1 ชม.)" : ""));
+      if (!retried) retryLookupLater("fg");
     } else {
       $("pdNumber").value = rec.pdNumber || "";
       $("fgModel").value = rec.fgModel || "";
@@ -987,11 +1005,12 @@
     resolveRM(code);
   });
 
-  function resolveRM(code) {
+  function resolveRM(code, retried) {
     if (!initReady) { setStatus($("rmStatus"), "", "กำลังโหลดข้อมูลสำหรับค้นหา…"); return; }
     const rec = rmMap.get(code.toUpperCase());
     if (!rec) {
       setStatus($("rmStatus"), "err", "ไม่พบรหัสนี้ — กรอกชื่อวัตถุดิบและหน่วยเองด้านล่างได้");
+      if (!retried) retryLookupLater("rm");
       if (unitAuto) { $("rmUnit").value = ""; unitAuto = false; }
     } else {
       $("rmName").value = rec.productName || "";

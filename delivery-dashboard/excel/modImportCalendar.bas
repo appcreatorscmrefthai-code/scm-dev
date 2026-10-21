@@ -3,7 +3,9 @@ Option Explicit
 
 ' ============================================================================
 '  Delivery Tracking : ดึงแผนส่งของ (export-tasks) + ใบจองรถ (1Template_TB) ลงชีต Plan
-'  รุ่น 2026.10.21-i  (ตรวจงานที่เคยส่งขึ้นระบบแต่ไม่มีใน Calendar Plan แล้ว (คีย์ Client Name) : เปิด Notepad + ส่งอีเมล (ชีต Config : mail_to / mail_cc) ;
+'  รุ่น 2026.10.21-k  (แจ้งงานที่ไม่มีใน Calendar Plan ทุกครั้งที่บอตรัน ไม่จำกัดวันละครั้ง)
+'  รุ่น j : (อีเมลแจ้งงานหาย : รูปแบบ HTML Tahoma 14 / ท้ายเมล 12 แสดงเฉพาะ Task Code, Client Name, วันที่)
+'  รุ่น i : (ตรวจงานที่เคยส่งขึ้นระบบแต่ไม่มีใน Calendar Plan แล้ว (คีย์ Client Name) : เปิด Notepad + ส่งอีเมล (ชีต Config : mail_to / mail_cc) ;
 '                     h : งานเดิมที่ Client Name ตรงกัน : ตรวจข้อมูลต้นทางที่เปลี่ยน/เพิ่งกรอกครบ แล้วส่งอัปเดตเฉพาะช่องไปแก้ที่เว็บ (ไม่เพิ่มแถวซ้ำ) ; บอตรันได้หลายรอบต่อวัน ;
 '                     g : ดึงเฉพาะงานใหม่จริง งานที่มีอยู่แล้วข้าม ; ชีต Plan ล้างงานที่ส่งแล้วออก เหลือเฉพาะงานรอบนี้ ; Client Name ซ้ำ / ว่าง = คงไว้ท้ายรายการ ไม่รัน Task Code ไม่ส่งขึ้นเว็บ แจ้งใน Log + เปิด Notepad เตือน ;
 '                     จับคู่ใบจองรถโดยตัด Rev.nn ท้าย Client Name เช่น LN26-544 Rev.01 = LN26-544)
@@ -872,7 +874,7 @@ End Sub
 '  ตรวจงานที่หายจาก Calendar Plan : งานใน Plan_Backup (= งานบน Delivery Tracking ที่ส่งขึ้นไปแล้ว) วันที่อยู่ในช่วง d1-d2
 '  ที่ Client Name (ตัด Rev.nn) ไม่มีในรายการ Calendar Plan รอบนี้ (cal / nCal = งาน outbound ของช่วงวันที่เดียวกัน)
 '  งานที่ถูกยกเลิกแล้ว / Client Name ว่าง / D/N NO ไม่ตรวจ
-'  พบ : เปิด Notepad ค้างไว้ + ส่งอีเมลต่องาน (To/CC ตามชีต Config : mail_to, mail_cc) ; แจ้งซ้ำไม่เกินวันละครั้งต่องาน (บันทึกในชีตซ่อน Missing_Notified)
+'  พบ : เปิด Notepad ค้างไว้ + ส่งอีเมลต่องาน (To/CC ตามชีต Config : mail_to, mail_cc) ; แจ้งทุกครั้งที่บอตรันจนกว่างานจะถูกลบออกจากแผน (บันทึกประวัติในชีตซ่อน Missing_Notified)
 '  คืนข้อความสรุป (ว่าง = ไม่พบ)
 ' ---------------------------------------------------------------------------
 Private Function CheckMissing(ByVal d1 As Date, ByVal d2 As Date, ByRef cal As Variant, ByVal nCal As Long) As String
@@ -930,17 +932,15 @@ Private Function CheckMissing(ByVal d1 As Date, ByVal d2 As Date, ByRef cal As V
                               "บริษัทขนส่ง : " & SafeStr(a(r, 11)) & "   ประเภทรถ : " & SafeStr(a(r, COL_VTYPE)) & "   ทะเบียน : " & SafeStr(a(r, 13)) & "   ผู้ขับ : " & SafeStr(a(r, 14))
                         listTxt = listTxt & IIf(Len(listTxt) > 0, ", ", "") & code & " (" & client & ")"
                         k = UCase$(code)
-                        isNew = Not lgRow.Exists(k)
-                        If Not isNew Then isNew = (lgDay(k) <> today)
-                        needMail = mailOn And Len(mTo) > 0 And (isNew Or lgMail(k) <> "Yes")
+                        isNew = True                  ' แจ้งทุกครั้งที่บอตรัน (Notepad + อีเมล) จนกว่า Admin จะลบงานออกจากแผน
+                        needMail = mailOn And Len(mTo) > 0
                         If isNew Then
                             nShow = nShow + 1
                             fileTxt = fileTxt & "-----------------------------------------------" & vbCrLf & one & vbCrLf & vbCrLf
                         End If
                         If needMail Then
                             subj = "ไม่มีงาน " & client & " - " & code & " นี้ใน Calendar Plan แล้ว"
-                            err1 = SendMissMail(mTo, mCc, subj, "ไม่มีงานนี้ใน Calendar Plan แล้ว โปรดตรวจสอบและแจ้ง Admin ลบงานออกจากแผน" & vbCrLf & vbCrLf & one & vbCrLf & vbCrLf & _
-                                    "(ข้อความอัตโนมัติจากบอต Delivery Tracking : เทียบ Client Name ระหว่าง Calendar Plan กับ Delivery Tracking ช่วงวันที่ " & Format$(d1, "yyyy-mm-dd") & IIf(d2 > d1, " ถึง " & Format$(d2, "yyyy-mm-dd"), "") & ")")
+                            err1 = SendMissMail(mTo, mCc, subj, MissMailHtml(code, client, d))
                             If Len(err1) = 0 Then
                                 nMail = nMail + 1
                                 lgMail(k) = "Yes"
@@ -997,7 +997,7 @@ Private Function MissSheet() As Worksheet
 End Function
 
 ' ส่งอีเมลผ่าน Outlook ในเครื่อง (ต้องมี Outlook แบบ Classic ที่ล็อกอินอยู่) คืนค่าว่าง = สำเร็จ / ข้อความผิดพลาด
-Private Function SendMissMail(ByVal toAddr As String, ByVal ccAddr As String, ByVal subj As String, ByVal body As String) As String
+Private Function SendMissMail(ByVal toAddr As String, ByVal ccAddr As String, ByVal subj As String, ByVal htmlBody As String) As String
     Dim ol As Object, m As Object
     On Error GoTo Bad
     Set ol = CreateObject("Outlook.Application")
@@ -1005,11 +1005,33 @@ Private Function SendMissMail(ByVal toAddr As String, ByVal ccAddr As String, By
     m.To = toAddr
     If Len(ccAddr) > 0 Then m.CC = ccAddr
     m.Subject = subj
-    m.Body = body
+    m.HTMLBody = htmlBody
     m.Send
     Exit Function
 Bad:
     SendMissMail = Err.Description
+End Function
+
+' เนื้อหาอีเมลแจ้งงานที่ไม่มีใน Calendar Plan แล้ว (HTML) : เนื้อหา Tahoma 14 / ท้ายเมล Tahoma 12 ; แสดงเฉพาะ Task Code, Client Name, วันที่
+Private Function MissMailHtml(ByVal code As String, ByVal client As String, ByVal d As Date) As String
+    Dim fb As String, ft As String
+    fb = "font-family:Tahoma,sans-serif;font-size:14pt;margin:0;"
+    ft = "font-family:Tahoma,sans-serif;font-size:12pt;margin:0;"
+    MissMailHtml = "<html><body>" & _
+        "<p style=""" & fb & """><b>Dear Team,</b></p><p style=""" & fb & """>&nbsp;</p>" & _
+        "<p style=""" & fb & """>ไม่มีงานนี้ใน Calendar Plan แล้ว โปรดตรวจสอบและแจ้ง Admin ลบงานออกจากแผน</p><p style=""" & fb & """>&nbsp;</p>" & _
+        "<p style=""" & fb & """>Task Code : <b>" & HtmlText(code) & "</b><br>" & _
+        "Client Name : <b>" & HtmlText(client) & "</b><br>" & _
+        "วันที่ : <b>" & Format$(d, "yyyy-mm-dd") & "</b></p><p style=""" & fb & """>&nbsp;</p>" & _
+        "<p style=""" & ft & """>ข้อความอัตโนมัติจาก BOT Delivery Tracking</p><p style=""" & ft & """>&nbsp;</p>" & _
+        "<p style=""" & ft & """>Best Regards,</p></body></html>"
+End Function
+
+Private Function HtmlText(ByVal s As String) As String
+    s = Replace(s, "&", "&amp;")
+    s = Replace(s, "<", "&lt;")
+    s = Replace(s, ">", "&gt;")
+    HtmlText = s
 End Function
 
 ' แยกแถวใน cal ที่เป็น "งานเดิม" : Client Name (ตัด Rev.nn) ตรงกับงานที่มี Task Code ในชีต Plan / Plan_Backup ช่วงวันที่เดียวกัน (เอาแถวแรกของแต่ละชื่อ)

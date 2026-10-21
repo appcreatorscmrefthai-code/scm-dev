@@ -200,8 +200,8 @@
     return grid + slots.map(p => {
       const r = by[p];
       if (!r) return open(p, '') + `<div class="pa"><span class="none">–</span></div><div class="xl">${lab(p)}<small>&nbsp;</small></div>` + close;
-      const pc = Number(r.ontime_pct), cls = pc >= 90 ? '' : pc >= 70 ? 'mid' : 'low', col = pc >= 90 ? '#34d08c' : pc >= 70 ? '#f6b93b' : '#ff6b7c';
-      return open(p, `${p} : ทันเวลา ${pc}% (${r.ontime}/${r.n} จุด)${r.avg_late != null ? ' · สายเฉลี่ย ' + r.avg_late + ' นาที' : ''}`)
+      const pc = Number(r.ontime_pct), good = pc >= 90 && Number(r.any_late) === 0, cls = good ? '' : pc >= 70 ? 'mid' : 'low', col = good ? '#34d08c' : pc >= 70 ? '#f6b93b' : '#ff6b7c';   // เขียว = ไม่มีสายเลย แม้สายไม่เกินเกณฑ์ก็เป็นเหลือง
+      return open(p, `${p} : ทันเวลา ${pc}% เฉลี่ยจาก ${r.tasks} งาน (${r.ontime}/${r.n} จุด)${r.avg_late != null ? ' · สายเฉลี่ย ' + r.avg_late + ' นาที' : ''}`)
         + `<div class="pa"><span class="v" style="color:${col}">${Math.round(pc)}%</span><i class="bar ${cls}" style="height:${Math.max(1, pc) * 1.5}px"></i></div>
         <div class="xl">${lab(p)}<small>${r.n} จุด</small></div>` + close;
     }).join('');
@@ -226,14 +226,14 @@
     $('dtDay').classList.toggle('on', group === 'day'); $('dtMon').classList.toggle('on', group === 'month');
     try {
       const rows = await Auth.rpc('delay_trend', { p_from: from, p_to: d, p_group: group }) || [];
-      const tot = rows.reduce((a, r) => (a.n += r.n, a.ok += r.ontime, a), { n: 0, ok: 0 });
-      $('dtNote').textContent = tot.n ? `รวม ${tot.n} จุด ทันเวลา ${Math.round(1000 * tot.ok / tot.n) / 10}%` : '';
+      const tot = rows.reduce((a, r) => (a.n += r.n, a.t += r.tasks, a.sum += Number(r.pct_sum), a), { n: 0, t: 0, sum: 0 });
+      $('dtNote').textContent = tot.t ? `รวม ${tot.t} งาน (${tot.n} จุด) ทันเวลาเฉลี่ย ${Math.round(10 * tot.sum / tot.t) / 10}%` : '';
       $('dtChart').innerHTML = trendChart(rows, from, d);
       const w = $('dtChart').parentNode; w.scrollLeft = w.scrollWidth;      // จอเล็ก : เลื่อนไปช่วงล่าสุด
       $('dtHint').textContent = group === 'month' ? 'กดเดือนในกราฟหรือตาราง = ดูรายวันของเดือนนั้น' : 'กดวันที่ในกราฟหรือตาราง = เปิดหน้าติดตามการจัดส่งของวันนั้น';
       $('dtBody').innerHTML = rows.length ? rows.slice().reverse().map(r => `<tr class="go" tabindex="0" ${group === 'month' ? `data-mon="${esc(r.period)}"` : `data-day="${esc(r.period)}"`}>
         <td>${group === 'month' ? `<a class="dl" href="#" data-mon="${esc(r.period)}">${esc(r.period)}</a>` : `<a class="dl" href="${dashUrl(r.period)}">${esc(r.period)}</a>`}</td><td class="num">${r.n}</td><td class="num">${r.ontime}</td><td class="num">${r.late}</td>
-        <td class="num"><b style="color:${r.ontime_pct >= 90 ? '#34d08c' : r.ontime_pct >= 70 ? '#f6b93b' : '#ff6b7c'}">${r.ontime_pct}%</b></td><td class="num">${r.avg_late == null ? '-' : r.avg_late}</td><td class="num">${r.max_late == null ? '-' : r.max_late}</td><td class="num">${r.gps}</td></tr>`).join('')
+        <td class="num"><b style="color:${r.ontime_pct >= 90 && +r.any_late === 0 ? '#34d08c' : r.ontime_pct >= 70 ? '#f6b93b' : '#ff6b7c'}">${r.ontime_pct}%</b></td><td class="num">${r.avg_late == null ? '-' : r.avg_late}</td><td class="num">${r.max_late == null ? '-' : r.max_late}</td><td class="num">${r.gps}</td></tr>`).join('')
         : '<tr><td colspan="8" class="empty">ยังไม่มีข้อมูลเวลาถึง</td></tr>';
     } catch (e) { $('dtBody').innerHTML = `<tr><td colspan="8" class="empty">โหลด Delay Trend ไม่สำเร็จ: ${esc(e.message || e)}</td></tr>`; }
   }

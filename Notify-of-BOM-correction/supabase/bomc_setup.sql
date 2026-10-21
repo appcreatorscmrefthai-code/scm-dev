@@ -110,6 +110,27 @@ language sql stable security definer set search_path = public, auth as $$
   where u.id = auth.uid()
 $$;
 
+-- ตารางค้นหา (PD number / Released products): synced_at = ครั้งล่าสุดที่ Google Sheet ส่งแถวนี้ขึ้นมา (ใช้ตรวจว่าซิงก์ยังทำงาน)
+--                                              updated_at = ครั้งล่าสุดที่ข้อมูลในแถวเปลี่ยนจริง
+alter table public.bomc_pd_number         add column if not exists synced_at timestamptz not null default now();
+alter table public.bomc_released_products add column if not exists synced_at timestamptz not null default now();
+create or replace function public.bomc_touch_lookup() returns trigger language plpgsql as $$
+begin
+  new.synced_at := now();
+  if to_jsonb(new) - 'updated_at' - 'synced_at' is distinct from to_jsonb(old) - 'updated_at' - 'synced_at' then
+    new.updated_at := now();
+  else
+    new.updated_at := old.updated_at;
+  end if;
+  return new;
+end $$;
+drop trigger if exists bomc_pd_touch on public.bomc_pd_number;
+create trigger bomc_pd_touch before update on public.bomc_pd_number
+  for each row execute function public.bomc_touch_lookup();
+drop trigger if exists bomc_rp_touch on public.bomc_released_products;
+create trigger bomc_rp_touch before update on public.bomc_released_products
+  for each row execute function public.bomc_touch_lookup();
+
 -- แจ้งงาน / นำเข้า: ผู้แจ้ง = ชื่อของผู้ใช้ที่ login เสมอ
 create or replace function public.bomc_items_stamp() returns trigger
 language plpgsql security definer set search_path = public as $$
