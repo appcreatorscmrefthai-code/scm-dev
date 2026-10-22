@@ -3,7 +3,8 @@ Option Explicit
 
 ' ============================================================================
 '  Delivery Tracking : ดึงแผนส่งของ (export-tasks) + ใบจองรถ (1Template_TB) ลงชีต Plan
-'  รุ่น 2026.10.21-k  (แจ้งงานที่ไม่มีใน Calendar Plan ทุกครั้งที่บอตรัน ไม่จำกัดวันละครั้ง)
+'  รุ่น 2026.10.22-l  (Client Name ที่เป็น LNnn- เติมรหัสลูกค้า 10 ตัวจาก Customer Code / Client Name = SAL เติมข้อความจาก Detail)
+'  รุ่น k : (แจ้งงานที่ไม่มีใน Calendar Plan ทุกครั้งที่บอตรัน ไม่จำกัดวันละครั้ง)
 '  รุ่น j : (อีเมลแจ้งงานหาย : รูปแบบ HTML Tahoma 14 / ท้ายเมล 12 แสดงเฉพาะ Task Code, Client Name, วันที่)
 '  รุ่น i : (ตรวจงานที่เคยส่งขึ้นระบบแต่ไม่มีใน Calendar Plan แล้ว (คีย์ Client Name) : เปิด Notepad + ส่งอีเมล (ชีต Config : mail_to / mail_cc) ;
 '                     h : งานเดิมที่ Client Name ตรงกัน : ตรวจข้อมูลต้นทางที่เปลี่ยน/เพิ่งกรอกครบ แล้วส่งอัปเดตเฉพาะช่องไปแก้ที่เว็บ (ไม่เพิ่มแถวซ้ำ) ; บอตรันได้หลายรอบต่อวัน ;
@@ -549,7 +550,7 @@ End Function
 ' ---------------------------------------------------------------------------
 Private Function BuildCalendar(ByVal ws As Worksheet, ByVal d1 As Date, ByVal d2 As Date, ByRef out As Variant, ByRef n As Long) As Boolean
     Dim a As Variant, h As Long, r As Long, d As Date
-    Dim cClient As Long, cDt As Long, cType As Long, cTrans As Long, cSch As Long, cDet As Long, cJob As Long
+    Dim cClient As Long, cDt As Long, cType As Long, cTrans As Long, cSch As Long, cDet As Long, cJob As Long, cCust As Long
     Dim miss As String, keep() As Long, k As Long
 
     a = ws.UsedRange.Value
@@ -568,6 +569,7 @@ Private Function BuildCalendar(ByVal ws As Worksheet, ByVal d1 As Date, ByVal d2
     cTrans = FindCol(a, h, "Transport")
     cSch = FindCol(a, h, "Schedule")
     cDet = FindCol(a, h, "Detail")
+    cCust = FindCol(a, h, "Customer Code")   ' ใช้เติม Client Name ที่เป็น LNnn- (ไม่มีคอลัมน์นี้ = ไม่เติม)
     cJob = FindCol(a, h, "Type")          ' domestic / oversea (ไม่มีคอลัมน์นี้ = ว่าง ใช้ Client Name แยกงานต่างประเทศ)
     If cDt = 0 Then miss = miss & " Date"
     If cType = 0 Then miss = miss & " ""Trans Type"""
@@ -604,7 +606,7 @@ Private Function BuildCalendar(ByVal ws As Worksheet, ByVal d1 As Date, ByVal d2
     For k = 1 To n
         r = keep(k)
         ParseYMD a(r, cDt), d
-        out(k + 1, 1) = Trim$(Flatten(SafeStr(a(r, cClient)), False))
+        out(k + 1, 1) = ResolveClientName(Trim$(Flatten(SafeStr(a(r, cClient)), False)), IIf(cCust > 0, SafeStr(a(r, cCust)), ""), SafeStr(a(r, cDet)))
         out(k + 1, 2) = d
         out(k + 1, 3) = Flatten(SafeStr(a(r, cTrans)), False)
         out(k + 1, 4) = HmValue(a(r, cSch))
@@ -612,6 +614,61 @@ Private Function BuildCalendar(ByVal ws As Worksheet, ByVal d1 As Date, ByVal d2
         If cJob > 0 Then out(k + 1, 6) = LCase$(Trim$(SafeStr(a(r, cJob))))
     Next k
     BuildCalendar = True
+End Function
+
+' ---------------------------------------------------------------------------
+'  เติม Client Name ที่ไม่สมบูรณ์ (ทำตอนดึงแผน ก่อนใช้เป็นคีย์ทุกขั้นตอน)
+'   1) Client Name = LNnn- (เช่น LN26-) : ต่อด้วยรหัสในช่อง Customer Code ที่ยาว 10 ตัวอักษร คั่นด้วย , (ไม่เว้นวรรค)
+'        Customer Code "1-S18,SANYPO1285,1-S30,SMIAPO1286"  ->  LN26-SANYPO1285,SMIAPO1286
+'   2) Client Name = SAL : ใช้ข้อความหลัง [ติ๊กถูกเขียว] ใน Detail จนถึงสัญลักษณ์ถัดไป
+'        Detail "[ติ๊กถูก]SALลูกค้า SMI Asia (Sanyo)( Makro สาทร)[สามเหลี่ยม]FAN MOTOR ..."  ->  SALลูกค้า SMI Asia (Sanyo)( Makro สาทร)
+'  ถ้าหาข้อความมาเติมไม่ได้ จะคงค่าเดิมไว้
+' ---------------------------------------------------------------------------
+Private Function ResolveClientName(ByVal client As String, ByVal custCode As String, ByVal detail As String) As String
+    Dim s As String, i As Long, ok As Boolean, parts As Variant, t As String, res As String, seen As String
+    Dim chk As String, p As Long, en As Long, piece As String
+
+    ResolveClientName = client
+    s = Trim$(Replace(client, ChrW(160), " "))
+
+    ' --- 1) LNnn- ---
+    If Len(s) >= 4 And UCase$(Left$(s, 2)) = "LN" And Right$(s, 1) = "-" Then
+        ok = True
+        For i = 3 To Len(s) - 1
+            If Mid$(s, i, 1) < "0" Or Mid$(s, i, 1) > "9" Then ok = False: Exit For
+        Next i
+        If ok Then
+            custCode = Replace(Replace(Replace(Replace(custCode, vbCr, ","), vbLf, ","), ";", ","), ChrW(160), " ")
+            parts = Split(custCode, ",")
+            For i = LBound(parts) To UBound(parts)
+                t = Trim$(CStr(parts(i)))
+                If Len(t) = 10 And InStr(t, " ") = 0 And InStr(t, "-") = 0 Then
+                    If InStr(1, "," & seen & ",", "," & UCase$(t) & ",") = 0 Then
+                        If Len(res) > 0 Then res = res & ","
+                        res = res & t
+                        seen = seen & IIf(Len(seen) > 0, ",", "") & UCase$(t)
+                    End If
+                End If
+            Next i
+            If Len(res) > 0 Then ResolveClientName = s & res
+        End If
+        Exit Function
+    End If
+
+    ' --- 2) SAL ---
+    If StrComp(s, "SAL", vbTextCompare) = 0 Then
+        detail = Replace(Replace(detail, vbCrLf, vbLf), vbCr, vbLf)
+        chk = ChrW(&H2705)
+        p = InStr(1, detail, chk)
+        If p > 0 Then
+            p = p + Len(chk)
+        Else
+            p = 1
+        End If
+        en = NextMarker(detail, p)
+        piece = Flatten(Mid$(detail, p, en - p), True)
+        If Len(piece) > 0 Then ResolveClientName = piece
+    End If
 End Function
 
 ' Client Name ที่ขึ้นต้นด้วย SKIP_CLIENT (เช่น "D/N NO : DN26-0151") = ข้าม

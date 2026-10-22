@@ -4,6 +4,7 @@ Option Explicit
 ' ============================================================================
 '  Delivery Tracking : ปุ่มใน Excel สำหรับส่งแผนขึ้นระบบ และดึงข้อมูลกลับลงไฟล์  (ไฟล์ Delivery_Tracking.xlsm)
 '  รุ่น 2026.10.21-y8  (บอตแก้งานเดิมให้ตรงกับต้นทางทุกช่อง รวมถึงลบข้อความจนว่าง)
+'  y8b : Plan_Backup ลบแถวของงานที่ถูกลบออกจากระบบแล้ว (เคยตรงกับระบบ แต่ไม่พบบนระบบแล้ว) อัตโนมัติ
 '  รุ่น y7 : (Plan_Backup : งานใหม่ต่อท้ายตาราง ไม่แทรกกลาง คงลำดับแถวเดิม)
 '  รุ่น y6 : (DP_UpdateExisting : บอตตรวจข้อมูลต้นทางที่เปลี่ยนของงานเดิม (ยึด Client Name) แล้วส่งอัปเดตเฉพาะช่องที่เปลี่ยนไปแก้ที่เว็บ ; ชีตซ่อน Src_Snapshot)
 '  รุ่น y5 : (เพิ่มคอลัมน์ E = Type : domestic / oversea จาก export-tasks ใช้แยกงานในประเทศ/ต่างประเทศ
@@ -82,6 +83,7 @@ Private mBkUpdated As Long
 Private mBkKept As Long
 Private mBkOverwritten As Long
 Private mBkLocal As Long
+Private mBkRemoved As Long
 
 Private mLgP As Long
 Private mLgR As Long
@@ -855,7 +857,7 @@ Private Function WriteBackup(ByVal plan As Collection, ByVal ws As Worksheet, By
     Dim nOut As Long, vals() As Variant, o As Long, clearTo As Long, ln As Long
     Dim oldKind() As Byte, outP() As Long, outO() As Long, pi As Long
 
-    mBkTotal = 0: mBkAdded = 0: mBkUpdated = 0: mBkKept = 0: mBkOverwritten = 0: mBkLocal = 0
+    mBkTotal = 0: mBkAdded = 0: mBkUpdated = 0: mBkKept = 0: mBkOverwritten = 0: mBkLocal = 0: mBkRemoved = 0
 
     ' งานบนระบบ : รหัส -> ลำดับในรายการ (ตัวแรกที่เจอ)
     For i = 1 To plan.Count
@@ -900,7 +902,14 @@ Private Function WriteBackup(ByVal plan As Collection, ByVal ws As Worksheet, By
             For c = 1 To NCOL
                 If Len(VText(vOld(i, c), c)) > 0 Then hasData = True: Exit For
             Next c
-            If hasData Then localRows.Add i: oldKind(i) = 2
+            If hasData Then
+                ' มีรหัสงาน + เคยตรงกับระบบ (คอลัมน์ AA มีเวลา) แต่ตอนนี้ไม่มีบนระบบ = งานถูกลบจากระบบแล้ว : ลบแถวนี้ออกจาก Plan_Backup
+                If plan.Count > 0 And Len(key) > 0 And Len(VText(vOld(i, COL_SYNC), COL_SYNC)) > 0 Then
+                    mBkRemoved = mBkRemoved + 1
+                Else
+                    localRows.Add i: oldKind(i) = 2
+                End If
+            End If
         End If
     Next i
 

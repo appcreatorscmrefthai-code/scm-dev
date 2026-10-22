@@ -483,7 +483,7 @@ async function planWatch() {      // เวลาที่ส่งแผนข�
     const r = await Auth.rpc('plan_last_sync');
     if (r && r.at) {
       const d = new Date(r.at), f = o => d.toLocaleString('th-TH', Object.assign({ timeZone: 'Asia/Bangkok' }, o));
-      el.textContent = 'ส่งแผนขึ้นล่าสุดเมื่อ ' + f({ day: 'numeric', month: 'short' }) + ' ' + f({ hour: '2-digit', minute: '2-digit', hour12: false }) + ' น.' + (r.by ? ' · ' + r.by : '');
+      el.textContent = 'อัปเดตแผนล่าสุดเมื่อ ' + f({ day: 'numeric', month: 'short' }) + ' ' + f({ hour: '2-digit', minute: '2-digit', hour12: false }) + ' น.' + (r.by ? ' · ' + r.by : '');
     } else el.textContent = '';
   } catch (e) { /* ยังไม่ได้รัน SQL s22 : ไม่แสดงอะไร */ }
 }
